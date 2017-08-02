@@ -20,27 +20,26 @@ import {
 
 import {
   flatten,
-  mapValues
 } from 'lodash';
 
-function readGraphQLFile (path: string): DocumentNode {
+function readGraphQLFile(path: string): DocumentNode {
   const data = readFileSync(path, 'utf-8');
   return parse(new Source(data, path));
 }
 
-async function getIntrospection (settings): Promise<IntrospectionQuery> {
+async function getIntrospection(settings): Promise<IntrospectionQuery> {
   const { url, headers } = settings;
   const client = new GraphQLClient(url, { headers });
   return await client.request(introspectionQuery) as IntrospectionQuery;
 }
 
-function isBuiltinType (name: string) {
+function isBuiltinType(name: string) {
   return name.startsWith('__') || [
     'String', 'Int', 'ID', 'Float', 'Boolean'
   ].indexOf(name) !== -1;
 }
 
-function addPrefixToIntrospection (
+function addPrefixToIntrospection(
   introspection: IntrospectionQuery,
   prefix?: String
 ) {
@@ -48,7 +47,7 @@ function addPrefixToIntrospection (
     return;
   }
 
-  function prefixType (
+  function prefixType(
     obj: IntrospectionNamedTypeRef | IntrospectionType | undefined
   ) {
     if (obj == null || isBuiltinType(obj.name)) {
@@ -57,7 +56,7 @@ function addPrefixToIntrospection (
     obj.name = prefix + obj.name;
   }
 
-  function prefixWrappedType (obj: IntrospectionTypeRef) {
+  function prefixWrappedType(obj: IntrospectionTypeRef) {
     if (obj.kind === 'LIST' || obj.kind === 'NON_NULL') {
       if (obj['ofType']) {
         prefixWrappedType(obj['ofType']);
@@ -67,7 +66,7 @@ function addPrefixToIntrospection (
     }
   }
 
-  function prefixTypeRef (container: {type: IntrospectionTypeRef}) {
+  function prefixTypeRef(container: {type: IntrospectionTypeRef}) {
     prefixWrappedType(container.type);
   }
 

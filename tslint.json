@@ -75,7 +75,12 @@
     "trailing-comma": [
       true,
       {
-        "multiline": "never",
+        "multiline": {
+          "objects": "ignore",
+          "arrays": "ignore",
+          "functions": "never",
+          "typeLiterals": "ignore"
+        },
         "singleline": "never"
       }
     ],
@@ -112,7 +117,11 @@
       "always"
     ],
     "strict-type-predicates": true,
-    "space-before-function-paren": [true, "always"],
+    "space-before-function-paren": [true, {
+      "anonymous": "always",
+      "named": "never",
+      "asyncArrow": "always"
+    }],
     "unified-signatures": true,
     "variable-name": [
       true,
