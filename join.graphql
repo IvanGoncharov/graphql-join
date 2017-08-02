@@ -1,0 +1,20 @@
+schema {
+  query: Query # non-prefixed `Query` from Graphcool API
+}
+
+extend type Appartament {
+  placesNearby(term: String, radius: Float): Yelp_Businesses @resolveWith(
+    query: "placesNearby",
+    argumentsFragment: "LocationForYelp" # come up with a better name maybe
+  )
+}
+
+query placesNearby($location: String!, $term: String, $radius: Float) {
+  search(location: $location, radius: $radius, term: $term) {
+    ...USER_SELECTION
+  }
+}
+
+fragment LocationForYelp on Appartament {
+  address @export(as: "location")
+}

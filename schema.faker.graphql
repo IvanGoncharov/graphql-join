@@ -1,0 +1,14 @@
+type Query {
+  allAppartaments: [Appartament!]!
+}
+
+type Appartament {
+  title: String!
+  # Human-readable appartament address
+  address: String! @examples(values:["Brunnenstraße 141a, 10115 Berlin, Germany"])
+  rooms: Int!
+  hasWifi: Boolean!
+  owner: String! @fake(type:fullName)
+  
+  # would be great to have nearby places here from Yelp
+}
