@@ -4,6 +4,7 @@ import {
   Source,
   ASTNode,
   DocumentNode,
+  DefinitionNode,
   GraphQLSchema,
   IntrospectionQuery,
   IntrospectionType,
@@ -13,6 +14,7 @@ import {
   Kind,
   parse,
   printSchema,
+  extendSchema,
   buildASTSchema,
   buildClientSchema,
   introspectionQuery
@@ -102,7 +104,8 @@ const endpoints = {
   }
 };
 
-async function getSchemasFromEndpoints () {
+async function getSchemasFromEndpoints(
+): Promise<{ [name: string]: GraphQLSchema }> {
   const remoteSchemas = {};
 
   for (const [name, settings] of Object.entries(endpoints)) {
@@ -120,7 +123,7 @@ async function getSchemasFromEndpoints () {
   return remoteSchemas;
 }
 
-function splitAST (documentAST: DocumentNode): { [name: string]: ASTNode } {
+function splitAST(documentAST: DocumentNode): { [name: string]: DefinitionNode[] } {
   const result = {};
   for (const node of documentAST.definitions) {
     result[node.kind] = result[node.kind] || [];
@@ -129,11 +132,18 @@ function splitAST (documentAST: DocumentNode): { [name: string]: ASTNode } {
   return result;
 }
 
-async function main () {
-  const remoteSchemas = await getSchemasFromEndpoints();
-  const joinAST = readGraphQLFile('./join.graphql');
+function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
+  return {
+    kind: Kind.DOCUMENT,
+    definitions,
+  };
+}
 
-  const remoteDefinitionNodes = mapValues(remoteSchemas, schema => {
+async function buildJoinSchema(
+  joinAST: DocumentNode,
+  remoteSchemas: GraphQLSchema[]
+): Promise<GraphQLSchema> {
+  const remoteDefinitionNodes = remoteSchemas.map(schema => {
     const SDL = printSchema(schema as GraphQLSchema);
     const astNodeMap = splitAST(parse(SDL));
     delete astNodeMap[Kind.SCHEMA_DEFINITION];
@@ -141,7 +151,10 @@ async function main () {
   });
 
   const astNodeMap = splitAST(joinAST);
-  // const extensions = astNodeMap[Kind.TYPE_EXTENSION_DEFINITION];
+  const extensionsAST = makeASTDocument(
+    astNodeMap[Kind.TYPE_EXTENSION_DEFINITION]
+  );
+
   // const fragments = astNodeMap[Kind.OPERATION_DEFINITION];
   // const operations = astNodeMap[Kind.FRAGMENT_DEFINITION];
 
@@ -151,15 +164,20 @@ async function main () {
 
   const joinSDLNodes = flatten(Object.values(astNodeMap));
 
-  const mergedSDL = {
-    kind: 'Document',
-    definitions: [
-      ...joinSDLNodes,
-      ...flatten(Object.values(remoteDefinitionNodes))
-    ]
-  } as DocumentNode;
+  const mergedSDL = makeASTDocument([
+    ...joinSDLNodes,
+    ...flatten(Object.values(remoteDefinitionNodes)),
+  ]);
 
   const mergedSchema = buildASTSchema(mergedSDL);
-  console.log(printSchema(mergedSchema));
+  return extendSchema(mergedSchema, extensionsAST);
 }
+
+async function main() {
+  const joinAST = readGraphQLFile('./join.graphql');
+  const remoteSchemas = await getSchemasFromEndpoints();
+  const schema = await buildJoinSchema(joinAST, Object.values(remoteSchemas));
+  console.log(printSchema(schema));
+}
+
 main();
