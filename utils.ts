@@ -129,11 +129,15 @@ export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
   };
 }
 
-export function schemaToASTDefinitions(schema: GraphQLSchema): DefinitionNode[] {
-  const SDL = printSchema(schema);
-  const astNodeMap = splitAST(parse(SDL));
+export function schemaToASTTypes(schema: GraphQLSchema): DefinitionNode[] {
+  const ast = parse(printSchema(schema));
+  const astNodeMap = splitAST(ast);
   delete astNodeMap[Kind.SCHEMA_DEFINITION];
-  return flatten(Object.values(astNodeMap));
+  return flatten(Object.values({
+    ...splitAST(ast),
+    [Kind.SCHEMA_DEFINITION]: [],
+    [Kind.DIRECTIVE_DEFINITION]: [],
+  }));
 }
 
 export function readGraphQLFile(path: string): DocumentNode {

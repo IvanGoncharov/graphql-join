@@ -32,7 +32,7 @@ import {
   addPrefixToIntrospection,
   splitAST,
   makeASTDocument,
-  schemaToASTDefinitions,
+  schemaToASTTypes,
   readGraphQLFile,
 } from './utils';
 
@@ -100,7 +100,7 @@ async function buildJoinSchema(
   joinAST: DocumentNode,
   remoteSchemas: GraphQLSchema[]
 ): Promise<GraphQLSchema> {
-  const remoteDefinitionNodes = remoteSchemas.map(schemaToASTDefinitions);
+  const remoteTypeNodes = remoteSchemas.map(schemaToASTTypes);
   const joinASTDefinitions = splitAST(joinAST);
   const operationDefs =
     joinASTDefinitions[Kind.FRAGMENT_DEFINITION] as OperationDefinitionNode[];
@@ -132,7 +132,7 @@ async function buildJoinSchema(
         [Kind.OPERATION_DEFINITION]: [],
         [Kind.FRAGMENT_DEFINITION]: [],
       }),
-      ...Object.values(remoteDefinitionNodes),
+      ...Object.values(remoteTypeNodes),
     ]));
 
     let schema = buildASTSchema(mergedSDL);
