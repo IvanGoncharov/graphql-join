@@ -1,6 +1,9 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   DocumentNode,
+  DefinitionNode,
+  TypeDefinitionNode,
+  SchemaDefinitionNode,
   FragmentDefinitionNode,
   OperationDefinitionNode,
 
@@ -16,30 +19,36 @@ import {
   separateOperations,
 } from 'graphql';
 
+// TODO: add to typings
+import { getDirectiveValues } from 'graphql/execution/values';
+
 import {
   keyBy,
-  flattenDeep,
+  flatten,
+  mapValues,
 } from 'lodash';
 
 import {
   exportDirective,
+  typePrefixDirective,
   resolveWithDirective,
 } from './directives';
 
 import {
   stubType,
   isBuiltinType,
-  addPrefixToIntrospection,
+  addPrefixToTypeNode,
   splitAST,
   makeASTDocument,
   schemaToASTTypes,
   readGraphQLFile,
 } from './utils';
 
-async function getIntrospection(settings): Promise<IntrospectionQuery> {
+async function getRemoteSchema(settings): Promise<GraphQLSchema> {
   const { url, headers } = settings;
   const client = new GraphQLClient(url, { headers });
-  return await client.request(introspectionQuery) as IntrospectionQuery;
+  const introspection = await client.request(introspectionQuery) as IntrospectionQuery;
+  return buildClientSchema(introspection);
 }
 
 const endpoints = {
@@ -47,32 +56,12 @@ const endpoints = {
     url: 'http://localhost:9002/graphql'
   },
   yelp: {
-    prefix: 'Yelp_',
     url: 'https://api.yelp.com/v3/graphql',
     headers: {
       'Authorization': 'Bearer ' + process.env.YELP_TOKEN
     }
   }
 };
-
-async function getSchemasFromEndpoints(
-): Promise<{ [name: string]: GraphQLSchema }> {
-  const remoteSchemas = {};
-
-  for (const [name, settings] of Object.entries(endpoints)) {
-    const introspection = await getIntrospection(settings);
-    try {
-      buildClientSchema(introspection);
-    } catch (e) {
-      // FIXME: prefix
-      throw e;
-    }
-
-    addPrefixToIntrospection(introspection, settings['prefix']);
-    remoteSchemas[name] = buildClientSchema(introspection);
-  }
-  return remoteSchemas;
-}
 
 // function isolateOperations(
 //   operations: OperationDefinitionNode[],
@@ -98,10 +87,12 @@ async function getSchemasFromEndpoints(
 
 async function buildJoinSchema(
   joinAST: DocumentNode,
-  remoteSchemas: GraphQLSchema[]
+  remoteSchemas: { [name: string]: GraphQLSchema }
 ): Promise<GraphQLSchema> {
-  const remoteTypeNodes = remoteSchemas.map(schemaToASTTypes);
+  // FIXME: validate that all directive known and locations are correct
   const joinASTDefinitions = splitAST(joinAST);
+  // FIXME: error if specified directives join AST 
+  const schemaNode = getSchemaNode();
   const operationDefs =
     joinASTDefinitions[Kind.FRAGMENT_DEFINITION] as OperationDefinitionNode[];
   const fragmentDefs =
@@ -125,17 +116,19 @@ async function buildJoinSchema(
   return schema;
 
   function buildSchemaFromSDL() {
-    const mergedSDL = makeASTDocument(flattenDeep([
-      ...Object.values({
-        ...joinASTDefinitions,
-        [Kind.TYPE_EXTENSION_DEFINITION]: [],
-        [Kind.OPERATION_DEFINITION]: [],
-        [Kind.FRAGMENT_DEFINITION]: [],
-      }),
-      ...Object.values(remoteTypeNodes),
-    ]));
-
+    const joinSDLDefinitons = flatten(Object.values({
+      ...joinASTDefinitions,
+      [Kind.TYPE_EXTENSION_DEFINITION]: [],
+      [Kind.OPERATION_DEFINITION]: [],
+      [Kind.FRAGMENT_DEFINITION]: [],
+    })) as TypeDefinitionNode[];
+    //TODO: add remote types only if it used in join + it's dependencies to minimise clashes
+    const mergedSDL = makeASTDocument([
+      ...getRemoteTypeNodes(),
+      ...joinSDLDefinitons,
+    ]);
     let schema = buildASTSchema(mergedSDL);
+    // TODO: check that mutation is executed in sequence
     // FIXME: check for subscription and error as not supported
 
     const extensionsAST = makeASTDocument(
@@ -144,13 +137,44 @@ async function buildJoinSchema(
 
     return extendSchema(schema, extensionsAST);
   }
+
+  function getRemoteTypeNodes(): TypeDefinitionNode[] {
+    const remoteTypeNodes = mapValues(remoteSchemas, schemaToASTTypes);
+    const prefixMap = getDirectiveValues(typePrefixDirective, schemaNode)['map'];
+    for (const [name, prefix] of Object.entries(prefixMap)) {
+      const types = remoteTypeNodes[name];
+      if (types === undefined) {
+        throw new Error(`@typePrefix: unknown "${name}" name`)
+      }
+      for (const type of types) {
+        addPrefixToTypeNode(prefix, type);
+      }
+    }
+    //FIXME: detect name clashes, but not if types are identical
+    return flatten(Object.values(remoteTypeNodes));
+  }
+
+  function getSchemaNode(): SchemaDefinitionNode {
+    const schemaNode = joinASTDefinitions[Kind.SCHEMA_DEFINITION];
+    if (schemaNode.length === 0) {
+      throw new Error('Must provide schema definition');
+    } else if(schemaNode.length !== 1) {
+      throw new Error('Must provide only one schema definition.');
+    }
+    return schemaNode[0] as SchemaDefinitionNode;
+  }
 }
 
 async function main() {
   const joinAST = readGraphQLFile('./join.graphql');
 
-  const remoteSchemas = await getSchemasFromEndpoints();
-  const schema = await buildJoinSchema(joinAST, Object.values(remoteSchemas));
+  const remoteSchemas = {};
+  for (const [name, settings] of Object.entries(endpoints)) {
+    //FIXME: add error prefix
+    remoteSchemas[name] = await getRemoteSchema(settings);
+  }
+
+  const schema = await buildJoinSchema(joinAST, remoteSchemas);
   console.log(printSchema(schema));
 }
 

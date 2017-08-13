@@ -1,23 +1,47 @@
-import { buildSchema } from 'graphql';
+import { keyBy } from 'lodash';
+import {
+  Kind,
+  buildSchema,
+  GraphQLScalarType,
+} from 'graphql';
 
-export const exportDirective = buildDirective(`
+const directiveIDL = `
   directive @export(as: String!) on FIELD
-`)
 
-export const resolveWithDirective = buildDirective(`
   directive @resolveWith(
     query: String!,
     argumentsFragment: String
   ) on FIELD_DEFINITION
-`)
 
-function buildDirective(IDL: string) {
-  const dummyIDL = `
-    type Query {
-      dummy: String
+  scalar PrefixMap
+  directive @typePrefix(map: PrefixMap!) on SCHEMA
+
+  # Dummy type
+  type Query {
+    dummy: String
+  }
+`;
+
+export const directiveSchema = buildSchema(directiveIDL);
+const PrefixMap = directiveSchema.getTypeMap()['PrefixMap'] as GraphQLScalarType;
+PrefixMap.parseLiteral = (ast) => {
+  const error =  Error(
+    '@typePrefix expects object with API name as a key and prefix string as a value'
+  );
+  if (ast.kind !== Kind.OBJECT) {
+    throw error;
+  }
+  return ast.fields.reduce((object, {name, value: valueAST}) => {
+    if (valueAST.kind !== Kind.STRING) {
+      throw error;
     }
-  `;
-
-  const schema = buildSchema(dummyIDL + IDL);
-  return schema.getDirectives()[0];
+    object[name.value] = valueAST.value;
+    return object;
+  }, {});
 }
+
+const directives = keyBy(directiveSchema.getDirectives(), 'name');
+
+export const exportDirective = directives['export'];
+export const resolveWithDirective = directives['resolveWith'];
+export const typePrefixDirective = directives['typePrefix'];

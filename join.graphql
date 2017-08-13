@@ -1,4 +1,6 @@
-schema {
+schema @typePrefix(map: {
+  yelp: "Yelp_"
+}) {
   query: Query # non-prefixed `Query` from Graphcool API
 }
 

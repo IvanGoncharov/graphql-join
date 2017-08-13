@@ -4,8 +4,12 @@ import { flatten } from 'lodash';
 import {
   Kind,
   Source,
+  NameNode,
+  TypeNode,
   DocumentNode,
   DefinitionNode,
+  TypeDefinitionNode,
+  FieldDefinitionNode,
 
   GraphQLSchema,
   GraphQLNamedType,
@@ -61,54 +65,43 @@ export function isBuiltinType(name: string) {
   ].indexOf(name) !== -1;
 }
 
-export function addPrefixToIntrospection(
-  introspection: IntrospectionQuery,
-  prefix?: String
+export function addPrefixToTypeNode(
+  prefix: String,
+  type: TypeDefinitionNode
 ) {
-  if (prefix == null) {
-    return;
+  prefixName(type);
+  switch (type.kind) {
+    case Kind.OBJECT_TYPE_DEFINITION:
+      (type.interfaces || []).forEach(prefixName);
+      (type.fields || []).forEach(prefixField);
+      break;
+    case Kind.INTERFACE_TYPE_DEFINITION:
+      (type.fields || []).forEach(prefixField);
+      break;
+    case Kind.UNION_TYPE_DEFINITION:
+      (type.types || []).forEach(prefixName);
+      break;
+    case Kind.INPUT_OBJECT_TYPE_DEFINITION:
+      (type.fields || []).forEach(prefixTypeName);
+      break;
   }
 
-  function prefixType(
-    obj: IntrospectionNamedTypeRef | IntrospectionType | undefined
-  ) {
-    if (obj == null || isBuiltinType(obj.name)) {
-      return;
+  function prefixName({name}: {name: NameNode}) {
+    if (!isBuiltinType(name.value)) {
+      name.value = prefix + name.value;
     }
-    obj.name = prefix + obj.name;
   }
-
-  function prefixWrappedType(obj: IntrospectionTypeRef) {
-    if (obj.kind === 'LIST' || obj.kind === 'NON_NULL') {
-      if (obj['ofType']) {
-        prefixWrappedType(obj['ofType']);
-      }
+  function prefixTypeName({type}: {type: TypeNode}) {
+    if (type.kind === Kind.NAMED_TYPE) {
+      prefixName(type)
     } else {
-      prefixType(obj as IntrospectionNamedTypeRef);
+      prefixTypeName(type);
     }
   }
-
-  function prefixTypeRef(container: {type: IntrospectionTypeRef}) {
-    prefixWrappedType(container.type);
+  function prefixField(field: FieldDefinitionNode) {
+    prefixTypeName(field);
+    (field.arguments || []).forEach(prefixTypeName);
   }
-
-  const { __schema: schema } = introspection;
-  prefixType(schema.queryType);
-  prefixType(schema.mutationType);
-  prefixType(schema.subscriptionType);
-  schema.directives.forEach(
-    directive => directive.args.forEach(prefixTypeRef)
-  );
-  schema.types.forEach(type => {
-    prefixType(type);
-    (Object.values(type['fields'] || {})).forEach(field => {
-      prefixTypeRef(field);
-      field.args.forEach(prefixTypeRef);
-    });
-    (type['interfaces'] || []).forEach(prefixType);
-    (type['possibleTypes'] || []).forEach(prefixType);
-    (Object.values(type['inputFields'] || {})).forEach(prefixTypeRef);
-  });
 }
 
 export function splitAST(
@@ -129,15 +122,15 @@ export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
   };
 }
 
-export function schemaToASTTypes(schema: GraphQLSchema): DefinitionNode[] {
+export function schemaToASTTypes(schema: GraphQLSchema): TypeDefinitionNode[] {
   const ast = parse(printSchema(schema));
-  const astNodeMap = splitAST(ast);
-  delete astNodeMap[Kind.SCHEMA_DEFINITION];
-  return flatten(Object.values({
+  const types = flatten(Object.values({
     ...splitAST(ast),
     [Kind.SCHEMA_DEFINITION]: [],
     [Kind.DIRECTIVE_DEFINITION]: [],
-  }));
+  })) as TypeDefinitionNode[];
+
+  return types.filter(type => !isBuiltinType(type.name.value));
 }
 
 export function readGraphQLFile(path: string): DocumentNode {
