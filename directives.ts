@@ -17,6 +17,7 @@ import {
 
 const directiveIDL = `
   directive @export(as: String!) on FIELD
+  directive @send(to: String!) on QUERY
 
   directive @resolveWith(
     query: String!,

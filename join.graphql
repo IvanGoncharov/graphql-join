@@ -11,7 +11,7 @@ extend type Appartament {
   )
 }
 
-query placesNearby($location: String!, $term: String, $radius: Float) {
+query placesNearby($location: String!, $term: String, $radius: Float) @send(to: "yelp") {
   search(location: $location, radius: $radius, term: $term) {
     ...USER_SELECTION
   }
