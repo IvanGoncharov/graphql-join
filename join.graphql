@@ -1,7 +1,5 @@
-schema @typePrefix(map: {
-  yelp: "Yelp_"
-}) {
-  query: Query # non-prefixed `Query` from Graphcool API
+schema {
+  query: Query # non-prefixed `Query` from Real estate API
 }
 
 extend type Appartament {

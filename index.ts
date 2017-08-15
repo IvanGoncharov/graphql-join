@@ -50,11 +50,18 @@ async function getRemoteSchema(settings): Promise<GraphQLSchema> {
   return buildClientSchema(introspection);
 }
 
-const endpoints = {
+type Endpoint = {
+  prefix?: string
+  url: string
+  headers?: {[name: string]: string}
+}
+
+const endpoints: { [name: string]: Endpoint } = {
   graphcool: {
     url: 'http://localhost:9002/graphql'
   },
   yelp: {
+    prefix: 'Yelp_',
     url: 'https://api.yelp.com/v3/graphql',
     headers: {
       'Authorization': 'Bearer ' + process.env.YELP_TOKEN
@@ -86,13 +93,13 @@ const endpoints = {
 
 async function buildJoinSchema(
   joinAST: DocumentNode,
-  remoteSchemas: { [name: string]: GraphQLSchema }
+  remoteSchemas: { [name: string]: GraphQLSchema },
+  prefixMap: { [name: string]: string }
 ): Promise<GraphQLSchema> {
   validateDirectives(joinAST);
   // FIXME: validate that all directive known and locations are correct
   const joinASTDefinitions = splitAST(joinAST);
   // FIXME: error if specified directives join AST 
-  const schemaNode = getSchemaNode();
   const operationDefs =
     joinASTDefinitions[Kind.FRAGMENT_DEFINITION] as OperationDefinitionNode[];
   const fragmentDefs =
@@ -140,7 +147,6 @@ async function buildJoinSchema(
 
   function getRemoteTypeNodes(): TypeDefinitionNode[] {
     const remoteTypeNodes = mapValues(remoteSchemas, schemaToASTTypes);
-    const prefixMap = getDirectiveValues(typePrefixDirective, schemaNode)['map'];
     for (const [name, prefix] of Object.entries(prefixMap)) {
       const types = remoteTypeNodes[name];
       if (types === undefined) {
@@ -153,28 +159,22 @@ async function buildJoinSchema(
     //FIXME: detect name clashes, but not if types are identical
     return flatten(Object.values(remoteTypeNodes));
   }
-
-  function getSchemaNode(): SchemaDefinitionNode {
-    const schemaNode = joinASTDefinitions[Kind.SCHEMA_DEFINITION];
-    if (schemaNode.length === 0) {
-      throw new Error('Must provide schema definition');
-    } else if(schemaNode.length !== 1) {
-      throw new Error('Must provide only one schema definition.');
-    }
-    return schemaNode[0] as SchemaDefinitionNode;
-  }
 }
 
 async function main() {
   const joinAST = readGraphQLFile('./join.graphql');
+  const prefixMap = {};
 
   const remoteSchemas = {};
-  for (const [name, settings] of Object.entries(endpoints)) {
+  for (const [name, {prefix, ...settings}] of Object.entries(endpoints)) {
     //FIXME: add error prefix
     remoteSchemas[name] = await getRemoteSchema(settings);
+    if (prefix) {
+      prefixMap[name] = prefix;
+    }
   }
 
-  const schema = await buildJoinSchema(joinAST, remoteSchemas);
+  const schema = await buildJoinSchema(joinAST, remoteSchemas, prefixMap);
   console.log(printSchema(schema));
 }
 
