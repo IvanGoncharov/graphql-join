@@ -17,10 +17,8 @@ import {
   buildClientSchema,
   introspectionQuery,
   separateOperations,
+  getDirectiveValues,
 } from 'graphql';
-
-// TODO: add to typings
-import { getDirectiveValues } from 'graphql/execution/values';
 
 import {
   keyBy,
@@ -29,6 +27,7 @@ import {
 } from 'lodash';
 
 import {
+  validateDirectives,
   exportDirective,
   typePrefixDirective,
   resolveWithDirective,
@@ -89,6 +88,7 @@ async function buildJoinSchema(
   joinAST: DocumentNode,
   remoteSchemas: { [name: string]: GraphQLSchema }
 ): Promise<GraphQLSchema> {
+  validateDirectives(joinAST);
   // FIXME: validate that all directive known and locations are correct
   const joinASTDefinitions = splitAST(joinAST);
   // FIXME: error if specified directives join AST 
@@ -178,4 +178,6 @@ async function main() {
   console.log(printSchema(schema));
 }
 
-main();
+main().catch(e => {
+  console.log(e);
+});
