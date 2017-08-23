@@ -66,7 +66,7 @@ export function isBuiltinType(name: string) {
 }
 
 export function addPrefixToTypeNode(
-  prefix: String,
+  prefix: string,
   type: TypeDefinitionNode
 ) {
   prefixName(type);
@@ -104,15 +104,27 @@ export function addPrefixToTypeNode(
   }
 }
 
+export type SplittedAST = { [name: string]: DefinitionNode[] };
 export function splitAST(
   documentAST: DocumentNode
-): { [name: string]: DefinitionNode[] } {
+): SplittedAST {
   const result = {};
   for (const node of documentAST.definitions) {
     result[node.kind] = result[node.kind] || [];
     result[node.kind].push(node);
   }
   return result;
+}
+
+export function extractTypeNodes(document: SplittedAST): TypeDefinitionNode[] {
+  return flatten(Object.values({
+    ...document,
+    [Kind.SCHEMA_DEFINITION]: [],
+    [Kind.DIRECTIVE_DEFINITION]: [],
+    [Kind.TYPE_EXTENSION_DEFINITION]: [],
+    [Kind.OPERATION_DEFINITION]: [],
+    [Kind.FRAGMENT_DEFINITION]: [],
+  })) as TypeDefinitionNode[];
 }
 
 export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
@@ -122,14 +134,13 @@ export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
   };
 }
 
-export function schemaToASTTypes(schema: GraphQLSchema): TypeDefinitionNode[] {
-  const ast = parse(printSchema(schema));
-  const types = flatten(Object.values({
-    ...splitAST(ast),
-    [Kind.SCHEMA_DEFINITION]: [],
-    [Kind.DIRECTIVE_DEFINITION]: [],
-  })) as TypeDefinitionNode[];
-
+export function schemaToASTTypes(
+  schema: GraphQLSchema,
+  location: string
+): TypeDefinitionNode[] {
+  const sdl = printSchema(schema);
+  const ast = parse(new Source(sdl, location));
+  const types = extractTypeNodes(splitAST(ast));
   return types.filter(type => !isBuiltinType(type.name.value));
 }
 

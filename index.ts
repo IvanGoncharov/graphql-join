@@ -34,10 +34,13 @@ import {
 } from './directives';
 
 import {
+  SplittedAST,
+
   stubType,
   isBuiltinType,
   addPrefixToTypeNode,
   splitAST,
+  extractTypeNodes,
   makeASTDocument,
   schemaToASTTypes,
   readGraphQLFile,
@@ -66,6 +69,7 @@ const endpoints: { [name: string]: Endpoint } = {
     headers: {
       'Authorization': 'Bearer ' + process.env.YELP_TOKEN
     }
+    // TODO: headers white listing from request
   }
 };
 
@@ -92,77 +96,78 @@ const endpoints: { [name: string]: Endpoint } = {
 // }
 
 async function buildJoinSchema(
-  joinAST: DocumentNode,
+  joinAST: SplittedAST,
   remoteSchemas: { [name: string]: GraphQLSchema },
   prefixMap: { [name: string]: string }
 ): Promise<GraphQLSchema> {
-  validateDirectives(joinAST);
-  // FIXME: validate that all directive known and locations are correct
-  const joinASTDefinitions = splitAST(joinAST);
-  // FIXME: error if specified directives join AST 
-  const operationDefs =
-    joinASTDefinitions[Kind.FRAGMENT_DEFINITION] as OperationDefinitionNode[];
-  const fragmentDefs =
-    joinASTDefinitions[Kind.OPERATION_DEFINITION] as FragmentDefinitionNode[];
+  const remoteTypeNodes = getRemoteTypeNodes();
 
-  const operations = keyBy(operationDefs, operation => {
-    if (!operation.name) {
-      throw new Error('Does not support anonymous operation.');
+  const typeToSourceAPI = {};
+  for (const [source, types] of Object.entries(remoteTypeNodes)) {
+    for (const {name: {value}} of types) {
+      typeToSourceAPI[value] = source;
     }
-    return operation.name.value;
-  });
-  const fragments = keyBy(fragmentDefs, fragment => fragment.name.value);
-  const schema = buildSchemaFromSDL();
-  for (let type of Object.values(schema.getTypeMap())) {
-    if (isBuiltinType(type.name)) {
-      continue;
-    }
-    stubType(type);
   }
 
+  const schema = buildSchemaFromSDL();
+  for (const type of Object.values(schema.getTypeMap())) {
+    const sourceAPI = typeToSourceAPI[type.name];
+    if (sourceAPI) {
+      const prefix = prefixMap[sourceAPI];
+      const originName = prefix ? type.name : type.name.replace(prefix, '');
+
+      type['sourceAPI'] = sourceAPI;
+      type['originType'] = remoteSchemas.getTypeMap(originName);
+    }
+  }
   return schema;
 
   function buildSchemaFromSDL() {
-    const joinSDLDefinitons = flatten(Object.values({
-      ...joinASTDefinitions,
-      [Kind.TYPE_EXTENSION_DEFINITION]: [],
-      [Kind.OPERATION_DEFINITION]: [],
-      [Kind.FRAGMENT_DEFINITION]: [],
-    })) as TypeDefinitionNode[];
-    //TODO: add remote types only if it used in join + it's dependencies to minimise clashes
+    const joinTypeNodes = extractTypeNodes(joinAST);
+
     const mergedSDL = makeASTDocument([
-      ...getRemoteTypeNodes(),
-      ...joinSDLDefinitons,
+      ...joinTypeNodes,
+      ...flatten(Object.values(remoteTypeNodes)),
     ]);
+
     let schema = buildASTSchema(mergedSDL);
-    // TODO: check that mutation is executed in sequence
-    // FIXME: check for subscription and error as not supported
 
     const extensionsAST = makeASTDocument(
-      joinASTDefinitions[Kind.TYPE_EXTENSION_DEFINITION]
+      joinAST[Kind.TYPE_EXTENSION_DEFINITION]
     );
+    schema = extendSchema(schema, extensionsAST);
 
-    return extendSchema(schema, extensionsAST);
+    for (const type of Object.values(schema.getTypeMap())) {
+      if (!isBuiltinType(type.name)) {
+        stubType(type);
+      }
+    }
+
+    return schema;
   }
 
-  function getRemoteTypeNodes(): TypeDefinitionNode[] {
-    const remoteTypeNodes = mapValues(remoteSchemas, schemaToASTTypes);
+  function getRemoteTypeNodes(): { [name: string]: TypeDefinitionNode[] } {
+    const remoteTypeNodes = mapValues(
+      remoteSchemas,
+      (schema, name) => schemaToASTTypes(schema, name)
+    );
+
     for (const [name, prefix] of Object.entries(prefixMap)) {
       const types = remoteTypeNodes[name];
       if (types === undefined) {
-        throw new Error(`@typePrefix: unknown "${name}" name`)
+        throw new Error(`unknown "${name}" name in prefixMap`)
       }
       for (const type of types) {
         addPrefixToTypeNode(prefix, type);
       }
     }
-    //FIXME: detect name clashes, but not if types are identical
-    return flatten(Object.values(remoteTypeNodes));
+
+    return remoteTypeNodes;
   }
 }
 
 async function main() {
-  const joinAST = readGraphQLFile('./join.graphql');
+  const joinAST = splitAST(readGraphQLFile('./join.graphql'));
   const prefixMap = {};
 
   const remoteSchemas = {};
@@ -174,8 +179,28 @@ async function main() {
     }
   }
 
+  // FIXME: validate that all directive known and locations are correct
+  // FIXME: error if specified directives join AST 
+  //validateDirectives(joinAST);
+
   const schema = await buildJoinSchema(joinAST, remoteSchemas, prefixMap);
+  // FIXME: check for subscription and error as not supported
   console.log(printSchema(schema));
+
+  const operationDefs =
+    joinAST[Kind.FRAGMENT_DEFINITION] as OperationDefinitionNode[];
+  const fragmentDefs =
+    joinAST[Kind.OPERATION_DEFINITION] as FragmentDefinitionNode[];
+
+  const operations = keyBy(operationDefs, operation => {
+    if (!operation.name) {
+      throw new Error('Does not support anonymous operation.');
+    }
+    return operation.name.value;
+  });
+
+  const fragments = keyBy(fragmentDefs, fragment => fragment.name.value);
+  // TODO: check that mutation is executed in sequence
 }
 
 main().catch(e => {
