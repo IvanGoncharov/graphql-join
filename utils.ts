@@ -10,6 +10,11 @@ import {
   DefinitionNode,
   TypeDefinitionNode,
   FieldDefinitionNode,
+  SchemaDefinitionNode,
+  FragmentDefinitionNode,
+  DirectiveDefinitionNode,
+  OperationDefinitionNode,
+  TypeExtensionDefinitionNode,
 
   GraphQLSchema,
   GraphQLNamedType,
@@ -104,27 +109,56 @@ export function addPrefixToTypeNode(
   }
 }
 
-export type SplittedAST = { [name: string]: DefinitionNode[] };
+// TODO: move to graphql-js
+export type SplittedAST = {
+  schemas: SchemaDefinitionNode[],
+  types: TypeDefinitionNode[],
+  typeExtensions: TypeExtensionDefinitionNode[],
+  directives: DirectiveDefinitionNode[],
+  operations: OperationDefinitionNode[],
+  fragments: FragmentDefinitionNode[],
+};
+
 export function splitAST(
   documentAST: DocumentNode
 ): SplittedAST {
-  const result = {};
+  const result: SplittedAST = {
+    schemas: [],
+    types: [],
+    typeExtensions: [],
+    directives: [],
+    operations: [],
+    fragments: [],
+  };
+
   for (const node of documentAST.definitions) {
-    result[node.kind] = result[node.kind] || [];
-    result[node.kind].push(node);
+    switch (node.kind) {
+      case Kind.SCHEMA_DEFINITION:
+        result.schemas.push(node);
+        break;
+      case Kind.SCALAR_TYPE_DEFINITION:
+      case Kind.ENUM_TYPE_DEFINITION:
+      case Kind.OBJECT_TYPE_DEFINITION:
+      case Kind.INTERFACE_TYPE_DEFINITION:
+      case Kind.UNION_TYPE_DEFINITION:
+      case Kind.INPUT_OBJECT_TYPE_DEFINITION:
+        result.types.push(node);
+        break;
+      case Kind.TYPE_EXTENSION_DEFINITION:
+        result.typeExtensions.push(node);
+        break;
+      case Kind.DIRECTIVE_DEFINITION:
+        result.directives.push(node);
+        break;
+      case Kind.OPERATION_DEFINITION:
+        result.operations.push(node);
+        break;
+      case Kind.FRAGMENT_DEFINITION:
+        result.fragments.push(node);
+        break;
+    }
   }
   return result;
-}
-
-export function extractTypeNodes(document: SplittedAST): TypeDefinitionNode[] {
-  return flatten(Object.values({
-    ...document,
-    [Kind.SCHEMA_DEFINITION]: [],
-    [Kind.DIRECTIVE_DEFINITION]: [],
-    [Kind.TYPE_EXTENSION_DEFINITION]: [],
-    [Kind.OPERATION_DEFINITION]: [],
-    [Kind.FRAGMENT_DEFINITION]: [],
-  })) as TypeDefinitionNode[];
 }
 
 export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
@@ -140,7 +174,7 @@ export function schemaToASTTypes(
 ): TypeDefinitionNode[] {
   const sdl = printSchema(schema);
   const ast = parse(new Source(sdl, location));
-  const types = extractTypeNodes(splitAST(ast));
+  const types = splitAST(ast).types;
   return types.filter(type => !isBuiltinType(type.name.value));
 }
 

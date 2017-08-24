@@ -1,16 +1,9 @@
 import { GraphQLClient } from 'graphql-request';
 import {
-  DocumentNode,
-  DefinitionNode,
   TypeDefinitionNode,
-  SchemaDefinitionNode,
-  FragmentDefinitionNode,
-  OperationDefinitionNode,
-
   GraphQLSchema,
   IntrospectionQuery,
 
-  Kind,
   printSchema,
   extendSchema,
   buildASTSchema,
@@ -40,7 +33,6 @@ import {
   isBuiltinType,
   addPrefixToTypeNode,
   splitAST,
-  extractTypeNodes,
   makeASTDocument,
   schemaToASTTypes,
   readGraphQLFile,
@@ -117,24 +109,20 @@ async function buildJoinSchema(
       const originName = prefix ? type.name : type.name.replace(prefix, '');
 
       type['sourceAPI'] = sourceAPI;
-      type['originType'] = remoteSchemas.getTypeMap(originName);
+      type['originType'] = remoteSchemas[sourceAPI].getType(originName);
     }
   }
   return schema;
 
   function buildSchemaFromSDL() {
-    const joinTypeNodes = extractTypeNodes(joinAST);
-
     const mergedSDL = makeASTDocument([
-      ...joinTypeNodes,
+      ...joinAST.types,
       ...flatten(Object.values(remoteTypeNodes)),
     ]);
 
     let schema = buildASTSchema(mergedSDL);
 
-    const extensionsAST = makeASTDocument(
-      joinAST[Kind.TYPE_EXTENSION_DEFINITION]
-    );
+    const extensionsAST = makeASTDocument(joinAST.typeExtensions);
     schema = extendSchema(schema, extensionsAST);
 
     for (const type of Object.values(schema.getTypeMap())) {
@@ -187,19 +175,14 @@ async function main() {
   // FIXME: check for subscription and error as not supported
   console.log(printSchema(schema));
 
-  const operationDefs =
-    joinAST[Kind.FRAGMENT_DEFINITION] as OperationDefinitionNode[];
-  const fragmentDefs =
-    joinAST[Kind.OPERATION_DEFINITION] as FragmentDefinitionNode[];
-
-  const operations = keyBy(operationDefs, operation => {
+  const operations = keyBy(joinAST.operations, operation => {
     if (!operation.name) {
       throw new Error('Does not support anonymous operation.');
     }
     return operation.name.value;
   });
 
-  const fragments = keyBy(fragmentDefs, fragment => fragment.name.value);
+  const fragments = keyBy(joinAST.fragments, fragment => fragment.name.value);
   // TODO: check that mutation is executed in sequence
 }
 
