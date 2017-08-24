@@ -108,8 +108,11 @@ async function buildJoinSchema(
       const prefix = prefixMap[sourceAPI];
       const originName = prefix ? type.name : type.name.replace(prefix, '');
 
-      type['sourceAPI'] = sourceAPI;
-      type['originType'] = remoteSchemas[sourceAPI].getType(originName);
+      // TODO: support for merging same type from different APIs, need to
+      // support in schema build
+      type['originTypes'] = {
+        [sourceAPI]: remoteSchemas[sourceAPI].getType(originName)
+      };
     }
   }
   return schema;
