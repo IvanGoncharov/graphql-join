@@ -49,7 +49,7 @@ type Endpoint = {
   prefix?: string
   url: string
   headers?: {[name: string]: string}
-}
+};
 
 const endpoints: { [name: string]: Endpoint } = {
   graphcool: {
@@ -146,7 +146,7 @@ async function buildJoinSchema(
     for (const [name, prefix] of Object.entries(prefixMap)) {
       const types = remoteTypeNodes[name];
       if (types === undefined) {
-        throw new Error(`unknown "${name}" name in prefixMap`)
+        throw new Error(`unknown "${name}" name in prefixMap`);
       }
       for (const type of types) {
         addPrefixToTypeNode(prefix, type);
@@ -163,7 +163,7 @@ async function main() {
 
   const remoteSchemas = {};
   for (const [name, {prefix, ...settings}] of Object.entries(endpoints)) {
-    //FIXME: add error prefix
+    // FIXME: add error prefix
     remoteSchemas[name] = await getRemoteSchema(settings);
     if (prefix) {
       prefixMap[name] = prefix;
@@ -171,8 +171,8 @@ async function main() {
   }
 
   // FIXME: validate that all directive known and locations are correct
-  // FIXME: error if specified directives join AST 
-  //validateDirectives(joinAST);
+  // FIXME: error if specified directives join AST
+  // validateDirectives(joinAST);
 
   const schema = await buildJoinSchema(joinAST, remoteSchemas, prefixMap);
   // FIXME: check for subscription and error as not supported
