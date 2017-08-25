@@ -15,6 +15,7 @@ import {
 import {
   keyBy,
   flatten,
+  fromPairs,
   mapValues,
 } from 'lodash';
 
@@ -65,8 +66,7 @@ const endpoints: { [name: string]: Endpoint } = {
 
 async function buildJoinSchema(
   joinAST: SplittedAST,
-  remoteSchemas: { [name: string]: GraphQLSchema },
-  prefixMap: { [name: string]: string }
+  remoteSchemas: RemoteSchemasMap,
 ): Promise<GraphQLSchema> {
   const remoteTypeNodes = getRemoteTypeNodes();
 
@@ -81,13 +81,17 @@ async function buildJoinSchema(
   for (const type of Object.values(schema.getTypeMap())) {
     const sourceAPI = typeToSourceAPI[type.name];
     if (sourceAPI) {
-      const prefix = prefixMap[sourceAPI];
-      const originName = prefix ? type.name : type.name.replace(prefix, '');
+      const {schema, prefix} = remoteSchemas[sourceAPI];
+      let originName = type.name;
+
+      if (prefix) {
+        originName = originName.replace(prefix, '');
+      }
 
       // TODO: support for merging same type from different APIs, need to
       // support in schema build
       type['originTypes'] = {
-        [sourceAPI]: remoteSchemas[sourceAPI].getType(originName)
+        [sourceAPI]: schema.getType(originName)
       };
     }
   }
@@ -114,43 +118,39 @@ async function buildJoinSchema(
   }
 
   function getRemoteTypeNodes(): { [name: string]: TypeDefinitionNode[] } {
-    const remoteTypeNodes = mapValues(
-      remoteSchemas,
-      (schema, name) => schemaToASTTypes(schema, name)
-    );
-
-    for (const [name, prefix] of Object.entries(prefixMap)) {
-      const types = remoteTypeNodes[name];
-      if (types === undefined) {
-        throw new Error(`unknown "${name}" name in prefixMap`);
+    return mapValues(remoteSchemas, ({schema, prefix}, name) => {
+      const types = schemaToASTTypes(schema, name)
+      if (prefix) {
+        types.forEach(type => addPrefixToTypeNode(prefix, type));
       }
-      for (const type of types) {
-        addPrefixToTypeNode(prefix, type);
-      }
-    }
-
-    return remoteTypeNodes;
+      return types;
+    });
   }
+}
+
+type RemoteSchemasMap = { [name: string]: { schema: GraphQLSchema, prefix?: string } };
+async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
+  const promises = Object.entries(endpoints).map(
+    async ([name, endpoint]) => {
+      const {prefix, ...settings} = endpoint;
+      return [name, {
+        prefix,
+        schema: await getRemoteSchema(settings),
+      }]
+    }
+  );
+  return Promise.all(promises).then(pairs => fromPairs(pairs));
 }
 
 async function main() {
   const joinAST = splitAST(readGraphQLFile('./join.graphql'));
-  const prefixMap = {};
-
-  const remoteSchemas = {};
-  for (const [name, {prefix, ...settings}] of Object.entries(endpoints)) {
-    // FIXME: add error prefix
-    remoteSchemas[name] = await getRemoteSchema(settings);
-    if (prefix) {
-      prefixMap[name] = prefix;
-    }
-  }
+  const remoteSchemas = await getRemoteSchemas();
 
   // FIXME: validate that all directive known and locations are correct
   // FIXME: error if specified directives join AST
   // validateDirectives(joinAST);
 
-  const schema = await buildJoinSchema(joinAST, remoteSchemas, prefixMap);
+  const schema = await buildJoinSchema(joinAST, remoteSchemas);
   // FIXME: check for subscription and error as not supported
   console.log(printSchema(schema));
 
