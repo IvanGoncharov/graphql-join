@@ -19,6 +19,7 @@ import {
   GraphQLSchema,
   GraphQLNamedType,
   GraphQLScalarType,
+  GraphQLObjectType,
 
   IntrospectionQuery,
   IntrospectionType,
@@ -38,7 +39,17 @@ export function stubType(type: GraphQLNamedType) {
   }
   else if (isAbstractType(type)) {
     type.resolveType = (obj => obj.__typename);
+  } else if (type instanceof GraphQLObjectType) {
+    for (const field of Object.values(type.getFields())) {
+      field.resolve = stubFieldResolver;
+    }
   }
+}
+
+// proxy value or Error instance injected by the proxy
+function stubFieldResolver(source, _1, _2, info) {
+  const key = info.path && info.path.key;
+  return source && source[key];
 }
 
 // TODO: Merge into graphql-js
