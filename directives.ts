@@ -1,9 +1,7 @@
 import { keyBy } from 'lodash';
 import {
-  Kind,
   DocumentNode,
   buildSchema,
-  GraphQLScalarType,
 
   validate,
   ArgumentsOfCorrectTypeRule,
@@ -35,7 +33,6 @@ const directives = keyBy(directiveSchema.getDirectives(), 'name');
 
 export const exportDirective = directives['export'];
 export const resolveWithDirective = directives['resolveWith'];
-export const typePrefixDirective = directives['typePrefix'];
 
 export function validateDirectives(ast: DocumentNode): void {
   const errors = validate(directiveSchema, ast, [

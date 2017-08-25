@@ -1,5 +1,4 @@
 import { readFileSync } from 'fs';
-import { flatten } from 'lodash';
 
 import {
   Kind,
@@ -21,11 +20,6 @@ import {
   GraphQLScalarType,
   GraphQLObjectType,
 
-  IntrospectionQuery,
-  IntrospectionType,
-  IntrospectionTypeRef,
-  IntrospectionNamedTypeRef,
-
   parse,
   printSchema,
   isAbstractType,
@@ -36,8 +30,7 @@ export function stubType(type: GraphQLNamedType) {
     type.serialize = (value => value);
     type.parseLiteral = astToJSON;
     type.parseValue = astToJSON;
-  }
-  else if (isAbstractType(type)) {
+  } else if (isAbstractType(type)) {
     type.resolveType = (obj => obj.__typename);
   } else if (type instanceof GraphQLObjectType) {
     for (const field of Object.values(type.getFields())) {
@@ -109,7 +102,7 @@ export function addPrefixToTypeNode(
   }
   function prefixTypeName({type}: {type: TypeNode}) {
     if (type.kind === Kind.NAMED_TYPE) {
-      prefixName(type)
+      prefixName(type);
     } else {
       prefixTypeName(type);
     }

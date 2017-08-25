@@ -9,7 +9,6 @@ import {
   buildASTSchema,
   buildClientSchema,
   introspectionQuery,
-  separateOperations,
   getDirectiveValues,
 } from 'graphql';
 
@@ -22,7 +21,6 @@ import {
 import {
   validateDirectives,
   exportDirective,
-  typePrefixDirective,
   resolveWithDirective,
 } from './directives';
 
@@ -64,28 +62,6 @@ const endpoints: { [name: string]: Endpoint } = {
     // TODO: headers white listing from request
   }
 };
-
-// function isolateOperations(
-//   operations: OperationDefinitionNode[],
-//   fragments: FragmentDefinitionNode[]
-// ): { [name: string]: DocumentNode } {
-//   const dummyUserSelection = {
-//     kind: Kind.FRAGMENT_DEFINITION,
-//     name: {
-//       kind: Kind.Name,
-//       value: 'USER_SELECTION',
-//     }
-//   } as FragmentDefinitionNode;
-//
-//   // Check that user didn't specify USER_SELECTION fragment
-//   const document = makeASTDocument([
-//     operations,
-//     ...fragments,
-//     // Dummy User Selection
-//     dummyUserSelection,
-//   ]);
-//   return separateOperations(document);
-// }
 
 async function buildJoinSchema(
   joinAST: SplittedAST,
