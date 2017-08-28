@@ -2,6 +2,7 @@ import { GraphQLClient } from 'graphql-request';
 import {
   TypeDefinitionNode,
   GraphQLSchema,
+  GraphQLNamedType,
   IntrospectionQuery,
 
   printSchema,
@@ -37,6 +38,9 @@ import {
   readGraphQLFile,
 } from './utils';
 
+// GLOBAL TODO:
+//   - check that mutation is executed in sequence
+
 async function getRemoteSchema(settings): Promise<GraphQLSchema> {
   const { url, headers } = settings;
   const client = new GraphQLClient(url, { headers });
@@ -65,10 +69,10 @@ const endpoints: { [name: string]: Endpoint } = {
 };
 
 async function buildJoinSchema(
-  joinAST: SplittedAST,
+  joinDefs: SplittedAST,
   remoteSchemas: RemoteSchemasMap,
 ): Promise<GraphQLSchema> {
-  const remoteTypeNodes = getRemoteTypeNodes();
+  const remoteTypeNodes = getRemoteTypeNodes(remoteSchemas);
 
   const typeToSourceAPI = {};
   for (const [source, types] of Object.entries(remoteTypeNodes)) {
@@ -77,55 +81,76 @@ async function buildJoinSchema(
     }
   }
 
-  const schema = buildSchemaFromSDL();
+  const schema = buildSchemaFromSDL({
+    ...joinDefs,
+    types: [
+      ...joinDefs.types,
+      ...flatten(Object.values(remoteTypeNodes)),
+    ],
+  });
+
   for (const type of Object.values(schema.getTypeMap())) {
-    const sourceAPI = typeToSourceAPI[type.name];
-    if (sourceAPI) {
-      const {schema, prefix} = remoteSchemas[sourceAPI];
-      let originName = type.name;
-
-      if (prefix) {
-        originName = originName.replace(prefix, '');
-      }
-
-      // TODO: support for merging same type from different APIs, need to
-      // support in schema build
-      type['originTypes'] = {
-        [sourceAPI]: schema.getType(originName)
-      };
-    }
+    type['originTypes'] = getOriginTypes(type.name);
   }
   return schema;
 
-  function buildSchemaFromSDL() {
-    const mergedSDL = makeASTDocument([
-      ...joinAST.types,
-      ...flatten(Object.values(remoteTypeNodes)),
-    ]);
-
-    let schema = buildASTSchema(mergedSDL);
-
-    const extensionsAST = makeASTDocument(joinAST.typeExtensions);
-    schema = extendSchema(schema, extensionsAST);
-
-    for (const type of Object.values(schema.getTypeMap())) {
-      if (!isBuiltinType(type.name)) {
-        stubType(type);
-      }
+  function getOriginTypes(
+    typeName: string
+  ): { [sourceAPI: string]: GraphQLNamedType } | void {
+    const sourceAPI = typeToSourceAPI[typeName];
+    if (!sourceAPI) {
+      return undefined;
     }
 
-    return schema;
-  }
+    const originTypes = {};
+    const {schema, prefix} = remoteSchemas[sourceAPI];
+    let originName = typeName;
 
-  function getRemoteTypeNodes(): { [name: string]: TypeDefinitionNode[] } {
-    return mapValues(remoteSchemas, ({schema, prefix}, name) => {
-      const types = schemaToASTTypes(schema, name)
-      if (prefix) {
-        types.forEach(type => addPrefixToTypeNode(prefix, type));
-      }
-      return types;
-    });
+    if (prefix) {
+      originName = originName.replace(prefix, '');
+    }
+
+    // TODO: support for merging same type from different APIs, need to
+    // support in schema build
+    originTypes[sourceAPI] = schema.getType(originName)
+    return originTypes;
   }
+}
+
+function validation() {
+
+  // TODO:
+  // JOIN AST:
+  //   - validate that all directive known and locations are correct
+  //   - no specified directives inside join AST
+  // fragments:
+  //   - shoud have uniq names
+  //   - shouldn't reference other fragments
+  //   - should have atleast one leaf
+  //   - all scalars should have exports directive
+  //   - names in export directive should be uniq
+  //   - should be used in @resolveWith
+  // operations:
+  //   - only query and mutation no subscription
+  //   - should have name
+  //   - shoud have uniq names
+  //   - should have @send(to:)
+  //   - valid against external schema
+  //   - should have atleast one "leaf" which is exactly "{...USER_SELECTION}"
+  //   - don't reference other fragments
+  //   - should be used in @resolveWith
+}
+
+function buildSchemaFromSDL(defs: SplittedAST) {
+  const sdl = makeASTDocument([
+    ...defs.schemas,
+    ...defs.types,
+  ]);
+
+  let schema = buildASTSchema(sdl);
+
+  const extensionsAST = makeASTDocument(defs.typeExtensions);
+  return extendSchema(schema, extensionsAST);
 }
 
 type RemoteSchemasMap = { [name: string]: { schema: GraphQLSchema, prefix?: string } };
@@ -142,27 +167,42 @@ async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
   return Promise.all(promises).then(pairs => fromPairs(pairs));
 }
 
+function getRemoteTypeNodes(
+  remoteSchemas: RemoteSchemasMap
+): { [name: string]: TypeDefinitionNode[] } {
+  return mapValues(remoteSchemas, ({schema, prefix}, name) => {
+    const types = schemaToASTTypes(schema, name)
+    if (prefix) {
+      types.forEach(type => addPrefixToTypeNode(prefix, type));
+    }
+    return types;
+  });
+}
+
 async function main() {
-  const joinAST = splitAST(readGraphQLFile('./join.graphql'));
   const remoteSchemas = await getRemoteSchemas();
+  const joinAST = readGraphQLFile('./join.graphql');
+  const joinDefs = splitAST(joinAST);
 
-  // FIXME: validate that all directive known and locations are correct
-  // FIXME: error if specified directives join AST
-  // validateDirectives(joinAST);
-
-  const schema = await buildJoinSchema(joinAST, remoteSchemas);
+  const schema = await buildJoinSchema(joinDefs, remoteSchemas);
   // FIXME: check for subscription and error as not supported
   console.log(printSchema(schema));
 
-  const operations = keyBy(joinAST.operations, operation => {
+  const operations = keyBy(joinDefs.operations, operation => {
     if (!operation.name) {
       throw new Error('Does not support anonymous operation.');
     }
     return operation.name.value;
   });
 
-  const fragments = keyBy(joinAST.fragments, fragment => fragment.name.value);
-  // TODO: check that mutation is executed in sequence
+  const fragments = keyBy(joinDefs.fragments, fragment => fragment.name.value);
+  for (const type of Object.values(schema.getTypeMap())) {
+    if (isBuiltinType(type.name)) {
+      continue;
+    }
+
+    stubType(type);
+  }
 }
 
 main().catch(e => {
