@@ -21,9 +21,12 @@ import {
   GraphQLObjectType,
 
   parse,
+  visit,
   printSchema,
   isAbstractType,
 } from 'graphql';
+
+import { RemoteSchema } from './types';
 
 export function stubType(type: GraphQLNamedType) {
   if (type instanceof GraphQLScalarType) {
@@ -74,42 +77,22 @@ export function isBuiltinType(name: string) {
   ].indexOf(name) !== -1;
 }
 
-export function addPrefixToTypeNode(
-  prefix: string,
-  type: TypeDefinitionNode
+function addPrefixToTypeNode(
+  type: TypeDefinitionNode,
+  prefix?: string
 ) {
-  prefixName(type);
-  switch (type.kind) {
-    case Kind.OBJECT_TYPE_DEFINITION:
-      (type.interfaces || []).forEach(prefixName);
-      (type.fields || []).forEach(prefixField);
-      break;
-    case Kind.INTERFACE_TYPE_DEFINITION:
-      (type.fields || []).forEach(prefixField);
-      break;
-    case Kind.UNION_TYPE_DEFINITION:
-      (type.types || []).forEach(prefixName);
-      break;
-    case Kind.INPUT_OBJECT_TYPE_DEFINITION:
-      (type.fields || []).forEach(prefixTypeName);
-      break;
+  if (!prefix) {
+    return type;
   }
 
-  function prefixName({name}: {name: NameNode}) {
-    if (!isBuiltinType(name.value)) {
-      name.value = prefix + name.value;
-    }
-  }
-  function prefixTypeName({type}: {type: TypeNode}) {
-    if (type.kind === Kind.NAMED_TYPE) {
-      prefixName(type);
-    } else {
-      prefixTypeName(type);
-    }
-  }
-  function prefixField(field: FieldDefinitionNode) {
-    prefixTypeName(field);
-    (field.arguments || []).forEach(prefixTypeName);
+  type.name = prefixName(type.name);
+  return visit(type, {
+    [Kind.NAMED_TYPE]: node => ({ ...node, name: prefixName(node.name) }),
+  });
+
+  function prefixName(node: NameNode): NameNode {
+    const name = node.value;
+    return isBuiltinType(name) ? node: { ...node, value: prefix + name };
   }
 }
 
@@ -173,13 +156,14 @@ export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
 }
 
 export function schemaToASTTypes(
-  schema: GraphQLSchema,
-  location: string
+  remoteSchema: RemoteSchema
 ): TypeDefinitionNode[] {
-  const sdl = printSchema(schema);
-  const ast = parse(new Source(sdl, location));
+  const sdl = printSchema(remoteSchema.schema);
+  const ast = parse(sdl, { noLocation: true });
   const types = splitAST(ast).types;
-  return types.filter(type => !isBuiltinType(type.name.value));
+  return types
+    .filter(type => !isBuiltinType(type.name.value))
+    .map(type => addPrefixToTypeNode(type, remoteSchema.prefix));
 }
 
 export function readGraphQLFile(path: string): DocumentNode {

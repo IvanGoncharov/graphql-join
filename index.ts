@@ -26,12 +26,13 @@ import {
   resolveWithDirective,
 } from './directives';
 
+import { RemoteSchemasMap } from './types';
+
 import {
   SplittedAST,
 
   stubType,
   isBuiltinType,
-  addPrefixToTypeNode,
   splitAST,
   makeASTDocument,
   schemaToASTTypes,
@@ -72,7 +73,7 @@ async function buildJoinSchema(
   joinDefs: SplittedAST,
   remoteSchemas: RemoteSchemasMap,
 ): Promise<GraphQLSchema> {
-  const remoteTypeNodes = getRemoteTypeNodes(remoteSchemas);
+  const remoteTypeNodes = mapValues(remoteSchemas, schemaToASTTypes);
 
   const typeToSourceAPI = {};
   for (const [source, types] of Object.entries(remoteTypeNodes)) {
@@ -153,7 +154,6 @@ function buildSchemaFromSDL(defs: SplittedAST) {
   return extendSchema(schema, extensionsAST);
 }
 
-type RemoteSchemasMap = { [name: string]: { schema: GraphQLSchema, prefix?: string } };
 async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
   const promises = Object.entries(endpoints).map(
     async ([name, endpoint]) => {
@@ -165,18 +165,6 @@ async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
     }
   );
   return Promise.all(promises).then(pairs => fromPairs(pairs));
-}
-
-function getRemoteTypeNodes(
-  remoteSchemas: RemoteSchemasMap
-): { [name: string]: TypeDefinitionNode[] } {
-  return mapValues(remoteSchemas, ({schema, prefix}, name) => {
-    const types = schemaToASTTypes(schema, name)
-    if (prefix) {
-      types.forEach(type => addPrefixToTypeNode(prefix, type));
-    }
-    return types;
-  });
 }
 
 async function main() {
