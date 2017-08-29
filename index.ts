@@ -37,6 +37,9 @@ import {
   makeASTDocument,
   schemaToASTTypes,
   readGraphQLFile,
+  addPrefixToTypeNode,
+  getExternalTypeNames,
+  getTypesWithDependencies,
 } from './utils';
 
 // GLOBAL TODO:
@@ -69,52 +72,41 @@ const endpoints: { [name: string]: Endpoint } = {
   }
 };
 
+type OriginTypes = GraphQLNamedType[];
+
 async function buildJoinSchema(
   joinDefs: SplittedAST,
   remoteSchemas: RemoteSchemasMap,
 ): Promise<GraphQLSchema> {
-  const remoteTypeNodes = mapValues(remoteSchemas, schemaToASTTypes);
-
-  const typeToSourceAPI = {};
-  for (const [source, types] of Object.entries(remoteTypeNodes)) {
-    for (const {name: {value}} of types) {
-      typeToSourceAPI[value] = source;
-    }
-  }
-
+  const remoteTypes = getRemoteTypes();
   const schema = buildSchemaFromSDL({
     ...joinDefs,
     types: [
       ...joinDefs.types,
-      ...flatten(Object.values(remoteTypeNodes)),
+      ...remoteTypes.map(type => type.ast),
     ],
   });
 
   for (const type of Object.values(schema.getTypeMap())) {
-    type['originTypes'] = getOriginTypes(type.name);
+    const remoteType = remoteTypes[type.name];
+    type['originTypes'] = remoteType && remoteType.originTypes;
   }
   return schema;
 
-  function getOriginTypes(
-    typeName: string
-  ): { [sourceAPI: string]: GraphQLNamedType } | void {
-    const sourceAPI = typeToSourceAPI[typeName];
-    if (!sourceAPI) {
-      return undefined;
+  function getRemoteTypes() {
+    const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
+    const requiredTypes = getExternalTypeNames(joinDefs);
+    for (const [api, {schema, prefix}] of Object.entries(remoteSchemas)) {
+      const typesMap = keyBy(schemaToASTTypes(schema), 'name.value');
+      const extractedTypes = getTypesWithDependencies(typesMap, requiredTypes);
+      for (const typeName of extractedTypes) {
+        remoteTypes.push({
+          ast: addPrefixToTypeNode(typesMap[typeName], prefix),
+          originTypes: [ schema.getType(typeName) ],
+        });
+      }
     }
-
-    const originTypes = {};
-    const {schema, prefix} = remoteSchemas[sourceAPI];
-    let originName = typeName;
-
-    if (prefix) {
-      originName = originName.replace(prefix, '');
-    }
-
-    // TODO: support for merging same type from different APIs, need to
-    // support in schema build
-    originTypes[sourceAPI] = schema.getType(originName)
-    return originTypes;
+    return remoteTypes;
   }
 }
 

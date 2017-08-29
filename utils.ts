@@ -6,6 +6,7 @@ import {
   NameNode,
   TypeNode,
   DocumentNode,
+  NamedTypeNode,
   DefinitionNode,
   TypeDefinitionNode,
   FieldDefinitionNode,
@@ -25,8 +26,6 @@ import {
   printSchema,
   isAbstractType,
 } from 'graphql';
-
-import { RemoteSchema } from './types';
 
 export function stubType(type: GraphQLNamedType) {
   if (type instanceof GraphQLScalarType) {
@@ -77,7 +76,7 @@ export function isBuiltinType(name: string) {
   ].indexOf(name) !== -1;
 }
 
-function addPrefixToTypeNode(
+export function addPrefixToTypeNode(
   type: TypeDefinitionNode,
   prefix?: string
 ) {
@@ -86,13 +85,61 @@ function addPrefixToTypeNode(
   }
 
   type.name = prefixName(type.name);
-  return visit(type, {
-    [Kind.NAMED_TYPE]: node => ({ ...node, name: prefixName(node.name) }),
-  });
+  return visitTypeReferences(
+    type,
+    node => ({ ...node, name: prefixName(node.name) })
+  );
 
   function prefixName(node: NameNode): NameNode {
     const name = node.value;
     return isBuiltinType(name) ? node: { ...node, value: prefix + name };
+  }
+}
+
+function visitTypeReferences<T extends TypeDefinitionNode>(
+  type: T,
+  cb: (ref: NamedTypeNode) => void | false | NamedTypeNode
+): T {
+  return visit(type, {
+    [Kind.NAMED_TYPE]: cb,
+  });
+}
+
+export function getTypesWithDependencies(
+  typesMap: { [typeName: string]: TypeDefinitionNode },
+  requiredTypes: string[]
+): string[] {
+  const returnTypes = [
+    ...requiredTypes.filter(name => typesMap[name])
+  ];
+
+  for (const typeName of returnTypes) {
+    visitTypeReferences(typesMap[typeName], ref => {
+      const refType = ref.name.value;
+      if (!returnTypes.includes(refType) && !isBuiltinType(refType)) {
+        returnTypes.push(refType);
+      }
+    });
+  }
+  return returnTypes;
+}
+
+export function getExternalTypeNames(definitions: SplittedAST): string[] {
+  var seenTypes = {};
+  markTypeRefs(definitions.schemas);
+  markTypeRefs(definitions.types);
+  markTypeRefs(definitions.typeExtensions);
+
+  var ownTypes = (definitions.types || []).map(type => type.name.value);
+  return Object.keys(seenTypes).filter(type => !ownTypes.includes(type));
+
+  function markTypeRefs(defs) {
+    defs.forEach(def => visitTypeReferences(def, ref => {
+      const name = ref.name.value;
+      if (!isBuiltinType(name)) {
+        seenTypes[name] = true;
+      }
+    }));
   }
 }
 
@@ -156,14 +203,12 @@ export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
 }
 
 export function schemaToASTTypes(
-  remoteSchema: RemoteSchema
+  schema: GraphQLSchema
 ): TypeDefinitionNode[] {
-  const sdl = printSchema(remoteSchema.schema);
+  const sdl = printSchema(schema);
   const ast = parse(sdl, { noLocation: true });
   const types = splitAST(ast).types;
-  return types
-    .filter(type => !isBuiltinType(type.name.value))
-    .map(type => addPrefixToTypeNode(type, remoteSchema.prefix));
+  return types.filter(type => !isBuiltinType(type.name.value));
 }
 
 export function readGraphQLFile(path: string): DocumentNode {
