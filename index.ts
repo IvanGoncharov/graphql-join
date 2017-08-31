@@ -1,5 +1,6 @@
 import { GraphQLClient } from 'graphql-request';
 import {
+  DocumentNode,
   TypeDefinitionNode,
   GraphQLSchema,
   GraphQLNamedType,
@@ -51,6 +52,19 @@ async function getRemoteSchema(settings): Promise<GraphQLSchema> {
   return buildClientSchema(introspection);
 }
 
+async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
+  const promises = Object.entries(endpoints).map(
+    async ([name, endpoint]) => {
+      const {prefix, ...settings} = endpoint;
+      return [name, {
+        prefix,
+        schema: await getRemoteSchema(settings),
+      }]
+    }
+  );
+  return Promise.all(promises).then(pairs => fromPairs(pairs));
+}
+
 type Endpoint = {
   prefix?: string
   url: string
@@ -73,10 +87,10 @@ const endpoints: { [name: string]: Endpoint } = {
 
 type OriginTypes = GraphQLNamedType[];
 
-async function buildJoinSchema(
+function buildJoinSchema(
   joinDefs: SplittedAST,
   remoteSchemas: RemoteSchemasMap,
-): Promise<GraphQLSchema> {
+): GraphQLSchema {
   const extTypeRefs = getExternalTypeNames(joinDefs);
   const remoteTypes = getRemoteTypes(remoteSchemas, extTypeRefs);
   const schema = buildSchemaFromSDL({
@@ -112,6 +126,43 @@ function getRemoteTypes(
   return remoteTypes;
 }
 
+function joinSchemas(
+  joinAST: DocumentNode,
+  remoteSchemas: RemoteSchemasMap,
+): GraphQLSchema {
+  const joinDefs = splitAST(joinAST);
+  const schema = buildJoinSchema(joinDefs, remoteSchemas);
+  console.log(printSchema(schema));
+
+  const operations = keyBy(joinDefs.operations, 'name.value');
+  const fragments = keyBy(joinDefs.fragments, 'name.value');
+  for (const type of Object.values(schema.getTypeMap())) {
+    if (isBuiltinType(type.name)) continue;
+
+    stubType(type);
+
+    if (type instanceof GraphQLObjectType) {
+      for (const field of Object.values(type.getFields())) {
+        const args = getResolveWithValues(field['astNode']);
+        if (!args) continue;
+
+        console.log(args);
+      }
+    }
+  }
+
+  return schema;
+}
+
+async function main() {
+  const joinAST = readGraphQLFile('./join.graphql');
+  const remoteSchemas = await getRemoteSchemas();
+  const joinSchema = joinSchemas(joinAST, remoteSchemas);
+}
+
+main().catch(e => {
+  console.log(e);
+
 function validation() {
   // TODO:
   // JOIN AST:
@@ -136,46 +187,4 @@ function validation() {
   //   - don't reference other fragments
   //   - should be used in @resolveWith
 }
-
-async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
-  const promises = Object.entries(endpoints).map(
-    async ([name, endpoint]) => {
-      const {prefix, ...settings} = endpoint;
-      return [name, {
-        prefix,
-        schema: await getRemoteSchema(settings),
-      }]
-    }
-  );
-  return Promise.all(promises).then(pairs => fromPairs(pairs));
-}
-
-async function main() {
-  const remoteSchemas = await getRemoteSchemas();
-  const joinAST = readGraphQLFile('./join.graphql');
-  const joinDefs = splitAST(joinAST);
-
-  const schema = await buildJoinSchema(joinDefs, remoteSchemas);
-  console.log(printSchema(schema));
-
-  const operations = keyBy(joinDefs.operations, 'name.value');
-  const fragments = keyBy(joinDefs.fragments, 'name.value');
-  for (const type of Object.values(schema.getTypeMap())) {
-    if (isBuiltinType(type.name)) continue;
-
-    stubType(type);
-
-    if (type instanceof GraphQLObjectType) {
-      for (const field of Object.values(type.getFields())) {
-        const args = getResolveWithValues(field['astNode']);
-        if (!args) continue;
-
-        console.log(args);
-      }
-    }
-  }
-}
-
-main().catch(e => {
-  console.log(e);
 });
