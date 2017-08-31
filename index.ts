@@ -10,7 +10,6 @@ import {
   printSchema,
   buildClientSchema,
   introspectionQuery,
-  getDirectiveValues,
 } from 'graphql';
 
 import {
@@ -160,10 +159,25 @@ function joinSchemas(
   return schema;
 }
 
+import * as express from 'express';
+import * as graphqlHTTP from 'express-graphql';
 async function main() {
   const joinAST = readGraphQLFile('./join.graphql');
   const remoteSchemas = await getRemoteSchemas();
   const joinSchema = joinSchemas(joinAST, remoteSchemas);
+
+  const express = require('express');
+  const graphqlHTTP = require('express-graphql');
+
+  const app = express();
+
+  app.use('/graphql', graphqlHTTP({
+    schema: joinSchema,
+    graphiql: true
+  }));
+
+  app.listen(4000);
+  console.log('\n\nhttp://localhost:4000/graphql');
 }
 
 main().catch(e => {
