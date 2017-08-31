@@ -25,6 +25,8 @@ import {
   visit,
   printSchema,
   isAbstractType,
+  extendSchema,
+  buildASTSchema,
 } from 'graphql';
 
 export function stubType(type: GraphQLNamedType) {
@@ -214,4 +216,16 @@ export function schemaToASTTypes(
 export function readGraphQLFile(path: string): DocumentNode {
   const data = readFileSync(path, 'utf-8');
   return parse(new Source(data, path));
+}
+
+export function buildSchemaFromSDL(defs: SplittedAST) {
+  const sdl = makeASTDocument([
+    ...defs.schemas,
+    ...defs.types,
+  ]);
+
+  let schema = buildASTSchema(sdl);
+
+  const extensionsAST = makeASTDocument(defs.typeExtensions);
+  return extendSchema(schema, extensionsAST);
 }

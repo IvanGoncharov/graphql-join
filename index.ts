@@ -6,8 +6,6 @@ import {
   IntrospectionQuery,
 
   printSchema,
-  extendSchema,
-  buildASTSchema,
   buildClientSchema,
   introspectionQuery,
   getDirectiveValues,
@@ -40,6 +38,7 @@ import {
   addPrefixToTypeNode,
   getExternalTypeNames,
   getTypesWithDependencies,
+  buildSchemaFromSDL,
 } from './utils';
 
 // GLOBAL TODO:
@@ -78,7 +77,8 @@ async function buildJoinSchema(
   joinDefs: SplittedAST,
   remoteSchemas: RemoteSchemasMap,
 ): Promise<GraphQLSchema> {
-  const remoteTypes = getRemoteTypes();
+  const extTypeRefs = getExternalTypeNames(joinDefs);
+  const remoteTypes = getRemoteTypes(remoteSchemas, extTypeRefs);
   const schema = buildSchemaFromSDL({
     ...joinDefs,
     types: [
@@ -87,35 +87,38 @@ async function buildJoinSchema(
     ],
   });
 
-  for (const type of Object.values(schema.getTypeMap())) {
-    const remoteType = remoteTypes[type.name];
-    type['originTypes'] = remoteType && remoteType.originTypes;
+  for (const { ast, originTypes } of remoteTypes) {
+    schema.getType(ast.name.value)['originTypes'] = originTypes;
   }
   return schema;
+}
 
-  function getRemoteTypes() {
-    const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
-    const requiredTypes = getExternalTypeNames(joinDefs);
-    for (const [api, {schema, prefix}] of Object.entries(remoteSchemas)) {
-      const typesMap = keyBy(schemaToASTTypes(schema), 'name.value');
-      const extractedTypes = getTypesWithDependencies(typesMap, requiredTypes);
-      for (const typeName of extractedTypes) {
-        remoteTypes.push({
-          ast: addPrefixToTypeNode(typesMap[typeName], prefix),
-          originTypes: [ schema.getType(typeName) ],
-        });
-      }
+function getRemoteTypes(
+  remoteSchemas: RemoteSchemasMap,
+  extTypeRefs: string[]
+) {
+  const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
+  for (const [api, {schema, prefix}] of Object.entries(remoteSchemas)) {
+    const typesMap = keyBy(schemaToASTTypes(schema), 'name.value');
+    const extractedTypes = getTypesWithDependencies(typesMap, extTypeRefs);
+    for (const typeName of extractedTypes) {
+      // TODO: merge types with same name and definition
+      remoteTypes.push({
+        ast: addPrefixToTypeNode(typesMap[typeName], prefix),
+        originTypes: [ schema.getType(typeName) ],
+      });
     }
-    return remoteTypes;
   }
+  return remoteTypes;
 }
 
 function validation() {
-
   // TODO:
   // JOIN AST:
+  //   - check for subscription in schema and `Subscription` type and error as not supported
   //   - validate that all directive known and locations are correct
   //   - no specified directives inside join AST
+  //   - all references to remote types are unambiguous
   // fragments:
   //   - shoud have uniq names
   //   - shouldn't reference other fragments
@@ -132,18 +135,6 @@ function validation() {
   //   - should have atleast one "leaf" which is exactly "{...USER_SELECTION}"
   //   - don't reference other fragments
   //   - should be used in @resolveWith
-}
-
-function buildSchemaFromSDL(defs: SplittedAST) {
-  const sdl = makeASTDocument([
-    ...defs.schemas,
-    ...defs.types,
-  ]);
-
-  let schema = buildASTSchema(sdl);
-
-  const extensionsAST = makeASTDocument(defs.typeExtensions);
-  return extendSchema(schema, extensionsAST);
 }
 
 async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
@@ -165,7 +156,6 @@ async function main() {
   const joinDefs = splitAST(joinAST);
 
   const schema = await buildJoinSchema(joinDefs, remoteSchemas);
-  // FIXME: check for subscription and error as not supported
   console.log(printSchema(schema));
 
   const operations = keyBy(joinDefs.operations, operation => {
