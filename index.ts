@@ -112,9 +112,15 @@ function getRemoteTypes(
   extTypeRefs: string[]
 ) {
   const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
-  for (const [api, {schema, prefix}] of Object.entries(remoteSchemas)) {
+  for (const [api, {schema, prefix = ''}] of Object.entries(remoteSchemas)) {
     const typesMap = keyBy(schemaToASTTypes(schema), 'name.value');
-    const extractedTypes = getTypesWithDependencies(typesMap, extTypeRefs);
+
+    const typesToExtract = extTypeRefs
+      .filter(name => name.startsWith(prefix))
+      .map(name => name.replace(prefix, ''))
+      .filter(name => typesMap[name]);
+
+    const extractedTypes = getTypesWithDependencies(typesMap, typesToExtract);
     for (const typeName of extractedTypes) {
       // TODO: merge types with same name and definition
       remoteTypes.push({

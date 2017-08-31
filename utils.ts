@@ -111,9 +111,7 @@ export function getTypesWithDependencies(
   typesMap: { [typeName: string]: TypeDefinitionNode },
   requiredTypes: string[]
 ): string[] {
-  const returnTypes = [
-    ...requiredTypes.filter(name => typesMap[name])
-  ];
+  const returnTypes = [ ...requiredTypes ];
 
   for (const typeName of returnTypes) {
     visitTypeReferences(typesMap[typeName], ref => {
