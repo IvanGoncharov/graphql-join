@@ -3,6 +3,7 @@ import {
   TypeDefinitionNode,
   GraphQLSchema,
   GraphQLNamedType,
+  GraphQLObjectType,
   IntrospectionQuery,
 
   printSchema,
@@ -20,8 +21,7 @@ import {
 
 import {
   validateDirectives,
-  exportDirective,
-  resolveWithDirective,
+  getResolveWithValues,
 } from './directives';
 
 import { RemoteSchemasMap } from './types';
@@ -158,20 +158,21 @@ async function main() {
   const schema = await buildJoinSchema(joinDefs, remoteSchemas);
   console.log(printSchema(schema));
 
-  const operations = keyBy(joinDefs.operations, operation => {
-    if (!operation.name) {
-      throw new Error('Does not support anonymous operation.');
-    }
-    return operation.name.value;
-  });
-
-  const fragments = keyBy(joinDefs.fragments, fragment => fragment.name.value);
+  const operations = keyBy(joinDefs.operations, 'name.value');
+  const fragments = keyBy(joinDefs.fragments, 'name.value');
   for (const type of Object.values(schema.getTypeMap())) {
-    if (isBuiltinType(type.name)) {
-      continue;
-    }
+    if (isBuiltinType(type.name)) continue;
 
     stubType(type);
+
+    if (type instanceof GraphQLObjectType) {
+      for (const field of Object.values(type.getFields())) {
+        const args = getResolveWithValues(field['astNode']);
+        if (!args) continue;
+
+        console.log(args);
+      }
+    }
   }
 }
 

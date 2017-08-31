@@ -11,6 +11,10 @@ import {
   UniqueArgumentNamesRule,
   UniqueDirectivesPerLocationRule,
   UniqueInputFieldNamesRule,
+
+  DirectiveNode,
+  GraphQLDirective,
+  getDirectiveValues,
 } from 'graphql';
 
 const directiveIDL = `
@@ -31,10 +35,24 @@ const directiveIDL = `
 const directiveSchema = buildSchema(directiveIDL);
 const directives = keyBy(directiveSchema.getDirectives(), 'name');
 
+
+function buildGetter<T>(
+  directive: GraphQLDirective
+): (node?: { directives?: Array<DirectiveNode> }) => T | undefined {
+  return (node) => {
+    return node && (getDirectiveValues(directive, node) as T);
+  };
+}
+
 export const exportDirective = directives['export'];
+export const getExportValues = buildGetter<{ as: string }>(exportDirective);
+
 export const resolveWithDirective = directives['resolveWith'];
+export const getResolveWithValues =
+  buildGetter<{ query: string, argumentsFragment: string }>(resolveWithDirective);
 
 export function validateDirectives(ast: DocumentNode): void {
+  // FIXME: check that there no query arguments inside directive values
   const errors = validate(directiveSchema, ast, [
     ArgumentsOfCorrectTypeRule,
     KnownArgumentNamesRule,
