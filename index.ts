@@ -1,7 +1,9 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   Kind,
+  FieldNode,
   DocumentNode,
+  VariableNode,
   SelectionSetNode,
   OperationTypeNode,
   TypeDefinitionNode,
@@ -12,8 +14,10 @@ import {
   GraphQLInputType,
   GraphQLNamedType,
   GraphQLObjectType,
+  GraphQLResolveInfo,
   IntrospectionQuery,
 
+  print,
   parse,
   visit,
   printSchema,
@@ -236,8 +240,17 @@ function joinSchemas(
 }
 
 
-function resolveWith(args: ResolveWithArgs) {
-  return () => {
+function resolveWith(resolveWithArgs: ResolveWithArgs) {
+  return (_1, args: object, _3, info: GraphQLResolveInfo) => {
+    // FIXME: handle array
+    let clientSelection = info.fieldNodes[0].selectionSet;
+    const schema = info.schema;
+    // clientSelection = visit(clientSelection, 
+    // );
+
+    const query = resolveWithArgs.query;
+    const selection = query.wrapSelection(args, clientSelection)
+    console.log(print(selection));
     console.log('test3');
   }
 }
@@ -266,14 +279,27 @@ class ProxyOperation {
       keyBy(operationDef.variableDefinitions, ({variable}) => variable.name.value),
       node => typeFromAST(schema, node.type) as GraphQLInputType
     );
+
+    this._resultPath = [];
+    visit(operationDef, {
+      [Kind.FIELD]: (node) => {
+        this._resultPath.push((node.alias || node.name).value);
+      },
+    });
   }
 
-  wrapSelection(args: object, clientSelection: SelectionSetNode): SelectionSetNode {
+  wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
     return visit(this._selectionSet, {
-      [Kind.VARIABLE]: (node) => {
+      [Kind.VARIABLE]: (node: VariableNode) => {
         const argName = node.name.value;
         // FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
         return astFromValue(args[argName], this._argToType[argName]);
+      },
+      [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
+        const selections = node.selections;
+        if (selections[0] && selections[0].kind === Kind.FRAGMENT_SPREAD) {
+          return clientSelection;
+        }
       },
     });
   }
