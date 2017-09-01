@@ -1,12 +1,18 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   DocumentNode,
+  SelectionSetNode,
+  OperationTypeNode,
   TypeDefinitionNode,
+  FragmentDefinitionNode,
+  OperationDefinitionNode,
+
   GraphQLSchema,
   GraphQLNamedType,
   GraphQLObjectType,
   IntrospectionQuery,
 
+  parse,
   printSchema,
   buildClientSchema,
   introspectionQuery,
@@ -21,7 +27,8 @@ import {
 
 import {
   validateDirectives,
-  getResolveWithValues,
+  getSendDirective,
+  getResolveWithDirective,
 } from './directives';
 
 import { RemoteSchemasMap } from './types';
@@ -43,6 +50,7 @@ import {
 
 // GLOBAL TODO:
 //   - check that mutation is executed in sequence
+//   - handle 'argumentsFragment' on root fields
 
 async function getRemoteSchema(settings): Promise<GraphQLSchema> {
   const { url, headers } = settings;
@@ -84,7 +92,7 @@ const endpoints: { [name: string]: Endpoint } = {
   }
 };
 
-type OriginTypes = GraphQLNamedType[];
+type OriginTypes = { type: GraphQLNamedType, originAPI: string }[];
 
 function buildJoinSchema(
   joinDefs: SplittedAST,
@@ -124,12 +132,20 @@ function getRemoteTypes(
       // TODO: merge types with same name and definition
       remoteTypes.push({
         ast: addPrefixToTypeNode(typesMap[typeName], prefix),
-        originTypes: [ schema.getType(typeName) ],
+        originTypes: [{
+          type: schema.getType(typeName),
+          originAPI: api,
+        }],
       });
     }
   }
   return remoteTypes;
 }
+
+type ResolveWithArgs = {
+  query: ProxyOperation;
+  argumentsFragment?: FragmentDefinitionNode;
+};
 
 function joinSchemas(
   joinAST: DocumentNode,
@@ -139,8 +155,15 @@ function joinSchemas(
   const schema = buildJoinSchema(joinDefs, remoteSchemas);
   console.log(printSchema(schema));
 
-  const operations = keyBy(joinDefs.operations, 'name.value');
-  const fragments = keyBy(joinDefs.fragments, 'name.value');
+  const operations = keyBy(
+    joinDefs.operations.map(op => new ProxyOperation(op)),
+    op => op.name
+  );
+  const fragments = keyBy(
+    joinDefs.fragments,
+    f => f.name.value
+  );
+
   for (const type of Object.values(schema.getTypeMap())) {
     if (isBuiltinType(type.name)) continue;
 
@@ -148,15 +171,89 @@ function joinSchemas(
 
     if (type instanceof GraphQLObjectType) {
       for (const field of Object.values(type.getFields())) {
-        const args = getResolveWithValues(field['astNode']);
-        if (!args) continue;
-
-        console.log(args);
+        const args = getResolveWithArgs(type, field);
+        if (args) {
+          field.resolve = resolveWith(args);
+        }
       }
     }
   }
 
   return schema;
+
+  function getResolveWithArgs(type, field): ResolveWithArgs | undefined {
+    let args = getResolveWithDirective(field['astNode']);
+    if (args) {
+      return {
+        query: operations[args.query],
+        argumentsFragment: args.argumentsFragment ?
+          fragments[args.argumentsFragment]: undefined,
+      };
+    }
+
+    const operationType = getOperationType(type);
+    if (operationType) {
+      // Root type always have only one origin type
+      const { originAPI } = (type['originTypes'] as OriginTypes)[0];
+      return {
+        query: operationForRootField(operationType, originAPI, field.name),
+      };
+    }
+    return undefined;
+  }
+
+  function getOperationType(
+    type: GraphQLNamedType
+  ): OperationTypeNode | undefined {
+    if (type === schema.getQueryType()) {
+      return 'query';
+    } else if (type === schema.getMutationType()) {
+      return 'mutation';
+    }
+  }
+}
+
+
+function resolveWith(args: ResolveWithArgs) {
+  return () => {
+    console.log('test3');
+  }
+}
+
+function operationForRootField(
+  operationType: OperationTypeNode,
+  sendTo: string,
+  fieldName: string
+): ProxyOperation {
+  const ast = parse(
+    `${operationType} @send(to: "${sendTo}") { ${fieldName} { ...CLIENT_SELECTION } }`,
+    { noLocation: true }
+  );
+  const operation = ast.definitions[0] as OperationDefinitionNode;
+  return new ProxyOperation(operation);
+}
+
+// TODO: call proxy know about fragments from orinal query
+// TODO: don't forget to stip type prefixes from user selection parts and fragments before proxing
+class ProxyOperation {
+  name?: string;
+  sendTo: string;
+  operationType: OperationTypeNode;
+  _resultPath: string[];
+  _selectionSet: SelectionSetNode;
+
+  constructor(operationDef: OperationDefinitionNode) {
+    this.name = operationDef.name && operationDef.name.value;
+    this.operationType = operationDef.operation;
+    this.sendTo = getSendDirective(operationDef)!.to;
+  }
+
+  wrapSelection(args: object, clientSelection: SelectionSetNode): SelectionSetNode {
+    return clientSelection;
+  }
+
+  makeResultObject(ExecuteResult): any {
+  }
 }
 
 import * as express from 'express';
@@ -182,6 +279,7 @@ async function main() {
 
 main().catch(e => {
   console.log(e);
+});
 
 function validation() {
   // TODO:
@@ -189,7 +287,9 @@ function validation() {
   //   - check for subscription in schema and `Subscription` type and error as not supported
   //   - validate that all directive known and locations are correct
   //   - no specified directives inside join AST
-  //   - all references to remote types are unambiguous
+  //   - all references to remote types have no conficts
+  //   - references to Query and Mutation roots point to exactly one type
+  //   - all fields inside extends and type defs should have @resolveWith
   // fragments:
   //   - shoud have uniq names
   //   - shouldn't reference other fragments
@@ -197,14 +297,15 @@ function validation() {
   //   - all scalars should have exports directive
   //   - names in export directive should be uniq
   //   - should be used in @resolveWith
+  //   - no field alliases
   // operations:
   //   - only query and mutation no subscription
   //   - should have name
   //   - shoud have uniq names
   //   - should have @send(to:)
   //   - valid against external schema
-  //   - should have atleast one "leaf" which is exactly "{...USER_SELECTION}"
+  //   - should have exactly one "leaf" which is "{...CLIENT_SELECTION}" or scalar
   //   - don't reference other fragments
   //   - should be used in @resolveWith
+  //   - no field alliases
 }
-});

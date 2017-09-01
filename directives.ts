@@ -45,11 +45,14 @@ function buildGetter<T>(
 }
 
 export const exportDirective = directives['export'];
-export const getExportValues = buildGetter<{ as: string }>(exportDirective);
+export const getExportDirective = buildGetter<{ as: string }>(exportDirective);
+
+export const sendDirective = directives['send'];
+export const getSendDirective = buildGetter<{ to: string }>(sendDirective);
 
 export const resolveWithDirective = directives['resolveWith'];
-export const getResolveWithValues =
-  buildGetter<{ query: string, argumentsFragment: string }>(resolveWithDirective);
+export const getResolveWithDirective =
+  buildGetter<{ query: string, argumentsFragment?: string }>(resolveWithDirective);
 
 export function validateDirectives(ast: DocumentNode): void {
   // FIXME: check that there no query arguments inside directive values
