@@ -10,16 +10,20 @@ import {
   FragmentDefinitionNode,
   OperationDefinitionNode,
 
+  ExecutionResult,
   GraphQLSchema,
   GraphQLInputType,
   GraphQLNamedType,
   GraphQLObjectType,
   GraphQLResolveInfo,
   IntrospectionQuery,
+  isAbstractType,
 
+  TypeInfo,
   print,
   parse,
   visit,
+  visitWithTypeInfo,
   printSchema,
   buildClientSchema,
   introspectionQuery,
@@ -40,7 +44,7 @@ import {
   getResolveWithDirective,
 } from './directives';
 
-import { RemoteSchemasMap } from './types';
+import { RemoteSchemasMap, SchemaProxy } from './types';
 
 import {
   SplittedAST,
@@ -61,21 +65,28 @@ import {
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
 
-async function getRemoteSchema(settings): Promise<GraphQLSchema> {
+function makeProxy(settings): SchemaProxy {
   const { url, headers } = settings;
   const client = new GraphQLClient(url, { headers });
-  const introspection = await client.request(introspectionQuery) as IntrospectionQuery;
-  return buildClientSchema(introspection);
+  return async (queryDocument: DocumentNode) => {
+    // FIXME: conver errors
+    // FIXME: better client
+    const query = print(queryDocument);
+    const data = await client.request(query);
+    return { data } as ExecutionResult;
+  }
 }
 
+const parsedIntrospectionQuery = parse(introspectionQuery);
 async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
   const promises = Object.entries(endpoints).map(
     async ([name, endpoint]) => {
       const {prefix, ...settings} = endpoint;
-      return [name, {
-        prefix,
-        schema: await getRemoteSchema(settings),
-      }]
+      const proxy = makeProxy(settings);
+      const introspection = (await proxy(parsedIntrospectionQuery)).data;
+      const schema = buildClientSchema(introspection as IntrospectionQuery);
+
+      return [name, { prefix, proxy, schema }];
     }
   );
   return Promise.all(promises).then(pairs => fromPairs(pairs));
@@ -182,6 +193,8 @@ function joinSchemas(
       for (const field of Object.values(type.getFields())) {
         const args = getResolveWithArgs(type, field);
         if (args) {
+          // TODO: unify
+          field['resolveWith'] = args;
           field.resolve = resolveWith(args);
         }
       }
@@ -241,18 +254,78 @@ function joinSchemas(
 
 
 function resolveWith(resolveWithArgs: ResolveWithArgs) {
-  return (_1, args: object, _3, info: GraphQLResolveInfo) => {
+  return async (_, args: object, context: ProxyContext, info: GraphQLResolveInfo) => {
     // FIXME: handle array
-    let clientSelection = info.fieldNodes[0].selectionSet;
+    let rawClientSelection = info.fieldNodes[0].selectionSet;
     const schema = info.schema;
-    // clientSelection = visit(clientSelection, 
-    // );
+    const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
+    const typeInfo = new TypeInfo(info.schema);
+    typeInfo['_typeStack'].push(fieldDef.type);
+
+    // TODO: unify with graphql-faker
+    const clientSelection = visit(rawClientSelection, visitWithTypeInfo(typeInfo, {
+      [Kind.FIELD]: () => {
+        const field = typeInfo.getFieldDef();
+        if (field.name.startsWith('__'))
+          return null;
+        if (field['resolveWith'])
+          return null;
+      },
+      [Kind.SELECTION_SET]: {
+        leave(node) {
+          const type = typeInfo.getParentType()
+          if (isAbstractType(type) || node.selections.length === 0)
+            return injectTypename(node);
+        }
+      },
+      // FIXME: reuse variable replace code from in wrapSelection
+    }));
 
     const query = resolveWithArgs.query;
-    const selection = query.wrapSelection(args, clientSelection)
-    console.log(print(selection));
-    console.log('test3');
+    const result = await context.proxyToRemote(
+      query.sendTo,
+      query.operationType,
+      query.wrapSelection(args, clientSelection),
+    );
+    return query.makeRootValue(result);
   }
+}
+
+class ProxyContext {
+  constructor(
+    private remoteSchemas: RemoteSchemasMap
+  ) {}
+
+  proxyToRemote(
+    api: string,
+    operation: OperationTypeNode,
+    selectionSet: SelectionSetNode
+  ): Promise<ExecutionResult> {
+    const query = makeASTDocument([{
+      kind: 'OperationDefinition',
+      operation,
+      selectionSet,
+    }]);
+    console.log(print(query));
+    return this.remoteSchemas[api].proxy(query);
+  }
+}
+
+
+function injectTypename(node: SelectionSetNode) {
+  return {
+    ...node,
+    selections: [
+      ...node.selections,
+      {
+        kind: Kind.FIELD,
+        name: {
+          kind: Kind.NAME,
+          value: '__typename',
+        },
+      },
+    ],
+  };
 }
 
 // TODO: call proxy know about fragments from orinal query
@@ -304,7 +377,16 @@ class ProxyOperation {
     });
   }
 
-  makeResultObject(ExecuteResult): any {
+  makeRootValue(result: ExecutionResult): any {
+    // FIXME: handle errors
+    let clientResult = result.data;
+    for (const prop of this._resultPath) {
+      if (clientResult == null) break;
+
+      // FIXME: handle arrays
+      clientResult = clientResult[prop];
+    }
+    return clientResult;
   }
 }
 
@@ -322,7 +404,14 @@ async function main() {
 
   app.use('/graphql', graphqlHTTP({
     schema: joinSchema,
-    graphiql: true
+    context: new ProxyContext(remoteSchemas),
+    graphiql: true,
+    formatError: error => ({
+      message: error.message,
+      locations: error.locations,
+      stack: error.stack,
+      path: error.path
+    }),
   }));
 
   app.listen(4000);
