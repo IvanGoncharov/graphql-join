@@ -1,9 +1,12 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   Kind,
+  ASTNode,
   FieldNode,
   DocumentNode,
   VariableNode,
+  NamedTypeNode,
+  DirectiveNode,
   SelectionSetNode,
   OperationTypeNode,
   TypeDefinitionNode,
@@ -23,6 +26,7 @@ import {
   print,
   parse,
   visit,
+  getVisitFn,
   visitWithTypeInfo,
   printSchema,
   buildClientSchema,
@@ -40,7 +44,9 @@ import {
 
 import {
   validateDirectives,
+  exportDirective,
   getSendDirective,
+  getExportDirective,
   getResolveWithDirective,
 } from './directives';
 
@@ -164,7 +170,7 @@ function getRemoteTypes(
 
 type ResolveWithArgs = {
   query: ProxyOperation;
-  argumentsFragment?: FragmentDefinitionNode;
+  argumentsFragment?: ArgumentsFragment;
 };
 
 function joinSchemas(
@@ -180,8 +186,8 @@ function joinSchemas(
     op => op.name
   );
   const fragments = keyBy(
-    joinDefs.fragments,
-    f => f.name.value
+    joinDefs.fragments.map(f => new ArgumentsFragment(f)),
+    f => f.name
   );
 
   for (const type of Object.values(schema.getTypeMap())) {
@@ -254,7 +260,12 @@ function joinSchemas(
 
 
 function resolveWith(resolveWithArgs: ResolveWithArgs) {
-  return async (_, args: object, context: ProxyContext, info: GraphQLResolveInfo) => {
+  return async (
+    rootValue: object,
+    args: object,
+    context: ProxyContext,
+    info: GraphQLResolveInfo
+  ) => {
     // FIXME: handle array
     let rawClientSelection = info.fieldNodes[0].selectionSet;
     const schema = info.schema;
@@ -262,30 +273,51 @@ function resolveWith(resolveWithArgs: ResolveWithArgs) {
     const typeInfo = new TypeInfo(info.schema);
     typeInfo['_typeStack'].push(fieldDef.type);
 
-    // TODO: unify with graphql-faker
-    const clientSelection = visit(rawClientSelection, visitWithTypeInfo(typeInfo, {
-      [Kind.FIELD]: () => {
-        const field = typeInfo.getFieldDef();
-        if (field.name.startsWith('__'))
-          return null;
-        if (field['resolveWith'])
-          return null;
-      },
-      [Kind.SELECTION_SET]: {
-        leave(node) {
-          const type = typeInfo.getParentType()
-          if (isAbstractType(type) || node.selections.length === 0)
-            return injectTypename(node);
-        }
-      },
-      // FIXME: reuse variable replace code from in wrapSelection
-    }));
+    let clientSelection;
+    if (rawClientSelection) {
+      // TODO: unify with graphql-faker
+      clientSelection = visit(rawClientSelection, visitWithTypeInfo(typeInfo, {
+        [Kind.FIELD]: () => {
+          const field = typeInfo.getFieldDef();
+          if (field.name.startsWith('__'))
+            return null;
+          if (field['resolveWith'])
+            return null;
+        },
+        [Kind.SELECTION_SET]: {
+          leave(node: SelectionSetNode) {
+            const type = typeInfo.getParentType()
+            if (type instanceof GraphQLObjectType) {
+              Object.values(type.getFields()).forEach(field => {
+                const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
+                if (!resolveWith) return;
 
-    const query = resolveWithArgs.query;
+                const {argumentsFragment} = resolveWith;
+                if (argumentsFragment) {
+                  node = argumentsFragment.injectIntoSelectionSet(node);
+                }
+              });
+            }
+
+            if (isAbstractType(type) || node.selections.length === 0)
+              return injectTypename(node);
+            else
+              return node;
+          }
+        },
+        // FIXME: reuse variable replace code from in wrapSelection
+      }));
+    }
+
+    const {query, argumentsFragment} = resolveWithArgs;
+    const queryArgs = {
+      ...args,
+      ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
+    };
     const result = await context.proxyToRemote(
       query.sendTo,
       query.operationType,
-      query.wrapSelection(args, clientSelection),
+      query.wrapSelection(queryArgs, clientSelection),
     );
     return query.makeRootValue(result);
   }
@@ -328,6 +360,62 @@ function injectTypename(node: SelectionSetNode) {
   };
 }
 
+class ArgumentsFragment {
+  name: string;
+  _selectionSet: SelectionSetNode;
+  _exportPaths: { [name: string]: string[] };
+  _typeCondition: NamedTypeNode;
+
+  constructor(fragment: FragmentDefinitionNode) {
+    const { name, typeCondition, selectionSet } = fragment;
+    this.name = name.value;
+    this._typeCondition = typeCondition;
+
+    this._exportPaths = {};
+    const resultPath = [];
+    this._selectionSet = visit(selectionSet, visitWithResultPath(resultPath, {
+      [Kind.FIELD]: (node: FieldNode) => {
+        const args = getExportDirective(node);
+        if (args) {
+          this._exportPaths[args.as] = [...resultPath];
+        }
+      },
+      [Kind.DIRECTIVE]: (node: DirectiveNode) => {
+        if (node.name.value === exportDirective.name) {
+          return null;
+        }
+      }
+    }));
+  }
+
+  injectIntoSelectionSet(selectionSet: SelectionSetNode): SelectionSetNode {
+    // FIXME: possible conflicts
+    return  {
+      ...selectionSet,
+      selections: [
+        ...selectionSet.selections,
+        {
+          kind: 'InlineFragment',
+          selectionSet: this._selectionSet,
+          // FIXME: work around for bug in graphql-js should work without
+          // see https://github.com/graphql/graphql-js/blob/master/src/validation/rules/PossibleFragmentSpreads.js#L45
+          typeCondition: this._typeCondition,
+        },
+      ],
+    };
+  }
+
+  extractArgs(rootValue: object): object {
+    return mapValues(this._exportPaths, path => {
+      const value = extractByPath(rootValue, path);
+      if (value instanceof Error) {
+        throw value;
+      }
+      return value;
+    });
+  }
+}
+
 // TODO: call proxy know about fragments from orinal query
 // TODO: don't forget to stip type prefixes from user selection parts and fragments before proxing
 class ProxyOperation {
@@ -353,12 +441,14 @@ class ProxyOperation {
       node => typeFromAST(schema, node.type) as GraphQLInputType
     );
 
-    this._resultPath = [];
-    visit(operationDef, {
+    const resultPath = [];
+    visit(operationDef, visitWithResultPath(resultPath, {
       [Kind.FIELD]: (node) => {
-        this._resultPath.push((node.alias || node.name).value);
+        if (resultPath.length > (this._resultPath || []).length) {
+          this._resultPath = [...resultPath];
+        }
       },
-    });
+    }));
   }
 
   wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
@@ -378,15 +468,61 @@ class ProxyOperation {
   }
 
   makeRootValue(result: ExecutionResult): any {
-    // FIXME: handle errors
-    let clientResult = result.data;
-    for (const prop of this._resultPath) {
-      if (clientResult == null) break;
+    // FIXME: inject errors
+    return extractByPath(result!.data!, this._resultPath);
+  }
+}
 
-      // FIXME: handle arrays
-      clientResult = clientResult[prop];
+function extractByPath(obj: object, path: string[]) {
+  let result = obj;
+  for (const prop of path) {
+    if (result == null) {
+      return result;
     }
-    return clientResult;
+
+    // FIXME: handle arrays
+    result = result[prop];
+  }
+  return result;
+}
+
+function visitWithResultPath(resultPath: string[], visitor) {
+  return {
+    enter(node) {
+      addToPath(node);
+      const fn = getVisitFn(visitor, node.kind, /* isLeaving */ false);
+      if (fn) {
+        const result = fn.apply(visitor, arguments);
+        if (result !== undefined) {
+          resultPath.pop();
+
+          if (isNode(result)) {
+            addToPath(node);
+          }
+        }
+        return result;
+      }
+    },
+    leave(node) {
+      const fn = getVisitFn(visitor, node.kind, /* isLeaving */ true);
+      let result;
+      if (fn) {
+        result = fn.apply(visitor, arguments);
+      }
+
+      resultPath.pop();
+      return result;
+    }
+  };
+
+  function addToPath(node: ASTNode) {
+    if (node.kind === Kind.FIELD) {
+      resultPath.push((node.alias || node.name).value);
+    }
+  }
+
+  function isNode(maybeNode) {
+    return maybeNode && typeof maybeNode.kind === 'string';
   }
 }
 
@@ -431,6 +567,7 @@ function validation() {
   //   - all references to remote types have no conficts
   //   - references to Query and Mutation roots point to exactly one type
   //   - all fields inside extends and type defs should have @resolveWith
+  //   - all field args + all fragment exports used in operation
   // fragments:
   //   - shoud have uniq names
   //   - shouldn't reference other fragments
