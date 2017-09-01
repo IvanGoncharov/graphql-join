@@ -71,6 +71,28 @@ function astToJSON(ast) {
   }
 }
 
+// function jsonToAST(json: any) {
+//   switch (typeof json) {
+//     case 'string':
+//       return { kind: Kind.STRING, value: json };
+//     case 'boolean':
+//       return { kind: Kind.BOOLEAN, value: json };
+//     case 'number':
+//       if (isInteger(json)) {
+//         return { kind: Kind.INT, value: json };
+//       } else {
+//         return { kind: Kind.FLOAT, value: json };
+//       }
+//     case 'object':
+//       if (json === null) {
+//         return { kind: Kind.NULL };
+//       } else if (Array.isArray(json)) {
+//         return { kind: Kind.LIST, value: json.map(jsonToAST) };
+//       } else {
+//       }
+//   }
+// }
+
 // TODO: Merge into graphql-js
 export function isBuiltinType(name: string) {
   return name.startsWith('__') || [

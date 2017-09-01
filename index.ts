@@ -1,5 +1,6 @@
 import { GraphQLClient } from 'graphql-request';
 import {
+  Kind,
   DocumentNode,
   SelectionSetNode,
   OperationTypeNode,
@@ -8,14 +9,18 @@ import {
   OperationDefinitionNode,
 
   GraphQLSchema,
+  GraphQLInputType,
   GraphQLNamedType,
   GraphQLObjectType,
   IntrospectionQuery,
 
   parse,
+  visit,
   printSchema,
   buildClientSchema,
   introspectionQuery,
+  astFromValue,
+  typeFromAST,
 } from 'graphql';
 
 import {
@@ -156,7 +161,7 @@ function joinSchemas(
   console.log(printSchema(schema));
 
   const operations = keyBy(
-    joinDefs.operations.map(op => new ProxyOperation(op)),
+    joinDefs.operations.map(op => new ProxyOperation(op, remoteSchemaResolver)),
     op => op.name
   );
   const fragments = keyBy(
@@ -211,6 +216,23 @@ function joinSchemas(
       return 'mutation';
     }
   }
+
+  function operationForRootField(
+    operationType: OperationTypeNode,
+    sendTo: string,
+    fieldName: string
+  ): ProxyOperation {
+    const ast = parse(
+      `${operationType} @send(to: "${sendTo}") { ${fieldName} { ...CLIENT_SELECTION } }`,
+      { noLocation: true }
+    );
+    const operation = ast.definitions[0] as OperationDefinitionNode;
+    return new ProxyOperation(operation, remoteSchemaResolver);
+  }
+
+  function remoteSchemaResolver(api: string): GraphQLSchema {
+    return remoteSchemas[api].schema;
+  }
 }
 
 
@@ -218,19 +240,6 @@ function resolveWith(args: ResolveWithArgs) {
   return () => {
     console.log('test3');
   }
-}
-
-function operationForRootField(
-  operationType: OperationTypeNode,
-  sendTo: string,
-  fieldName: string
-): ProxyOperation {
-  const ast = parse(
-    `${operationType} @send(to: "${sendTo}") { ${fieldName} { ...CLIENT_SELECTION } }`,
-    { noLocation: true }
-  );
-  const operation = ast.definitions[0] as OperationDefinitionNode;
-  return new ProxyOperation(operation);
 }
 
 // TODO: call proxy know about fragments from orinal query
@@ -241,15 +250,32 @@ class ProxyOperation {
   operationType: OperationTypeNode;
   _resultPath: string[];
   _selectionSet: SelectionSetNode;
+  _argToType: { [ argName: string ]: GraphQLInputType };
 
-  constructor(operationDef: OperationDefinitionNode) {
-    this.name = operationDef.name && operationDef.name.value;
+  constructor(
+    operationDef: OperationDefinitionNode,
+    schemaResolver: (api: string) => GraphQLSchema
+  ) {
     this.operationType = operationDef.operation;
     this.sendTo = getSendDirective(operationDef)!.to;
+    this.name = operationDef.name && operationDef.name.value;
+    this._selectionSet = operationDef.selectionSet;
+
+    const schema = schemaResolver(this.sendTo);
+    this._argToType = mapValues(
+      keyBy(operationDef.variableDefinitions, ({variable}) => variable.name.value),
+      node => typeFromAST(schema, node.type) as GraphQLInputType
+    );
   }
 
   wrapSelection(args: object, clientSelection: SelectionSetNode): SelectionSetNode {
-    return clientSelection;
+    return visit(this._selectionSet, {
+      [Kind.VARIABLE]: (node) => {
+        const argName = node.name.value;
+        // FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
+        return astFromValue(args[argName], this._argToType[argName]);
+      },
+    });
   }
 
   makeResultObject(ExecuteResult): any {
