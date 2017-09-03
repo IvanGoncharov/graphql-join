@@ -50,8 +50,6 @@ import {
   getResolveWithDirective,
 } from './directives';
 
-import { RemoteSchemasMap, SchemaProxy } from './types';
-
 import {
   SplittedAST,
 
@@ -70,6 +68,14 @@ import {
 // GLOBAL TODO:
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
+
+export type SchemaProxy = (query: DocumentNode) => Promise<ExecutionResult>;
+export type RemoteSchema = {
+  schema: GraphQLSchema,
+  proxy: SchemaProxy,
+  prefix?: string
+};
+export type RemoteSchemasMap = { [name: string]: RemoteSchema };
 
 function makeProxy(settings): SchemaProxy {
   const { url, headers } = settings;
