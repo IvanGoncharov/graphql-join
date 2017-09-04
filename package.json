@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "jest --runInBand",
     "start": "ts-node cli.ts",
     "debug": "ts-node --inspect index.ts",
     "lint": "tslint --type-check --project tsconfig.json *.ts"
@@ -34,6 +34,7 @@
     "typescript": "^2.4.2"
   },
   "jest": {
+    "testEnvironment": "node",
     "transform": {
       ".ts": "<rootDir>/node_modules/ts-jest/preprocessor.js"
     },
