@@ -58,7 +58,6 @@ import {
   splitAST,
   makeASTDocument,
   schemaToASTTypes,
-  readGraphQLFile,
   addPrefixToTypeNode,
   getExternalTypeNames,
   getTypesWithDependencies,
@@ -90,7 +89,9 @@ function makeProxy(settings): SchemaProxy {
 }
 
 const parsedIntrospectionQuery = parse(introspectionQuery);
-async function getRemoteSchemas(): Promise<RemoteSchemasMap> {
+export async function getRemoteSchemas(
+  endpoints: EndpointMap
+): Promise<RemoteSchemasMap> {
   const promises = Object.entries(endpoints).map(
     async ([name, endpoint]) => {
       const {prefix, ...settings} = endpoint;
@@ -109,20 +110,7 @@ type Endpoint = {
   url: string
   headers?: {[name: string]: string}
 };
-
-const endpoints: { [name: string]: Endpoint } = {
-  graphcool: {
-    url: 'http://localhost:9002/graphql'
-  },
-  yelp: {
-    prefix: 'Yelp_',
-    url: 'https://api.yelp.com/v3/graphql',
-    headers: {
-      'Authorization': 'Bearer ' + process.env.YELP_TOKEN
-    }
-    // TODO: headers white listing from request
-  }
-};
+export type EndpointMap = { [name: string]: Endpoint };
 
 type OriginTypes = { type: GraphQLNamedType, originAPI: string }[];
 
@@ -179,7 +167,7 @@ type ResolveWithArgs = {
   argumentsFragment?: ArgumentsFragment;
 };
 
-function joinSchemas(
+export function joinSchemas(
   joinAST: DocumentNode,
   remoteSchemas: RemoteSchemasMap,
 ): GraphQLSchema {
@@ -329,7 +317,7 @@ function resolveWith(resolveWithArgs: ResolveWithArgs) {
   }
 }
 
-class ProxyContext {
+export class ProxyContext {
   constructor(
     private remoteSchemas: RemoteSchemasMap
   ) {}
@@ -531,38 +519,6 @@ function visitWithResultPath(resultPath: string[], visitor) {
     return maybeNode && typeof maybeNode.kind === 'string';
   }
 }
-
-import * as express from 'express';
-import * as graphqlHTTP from 'express-graphql';
-async function main() {
-  const joinAST = readGraphQLFile('./join.graphql');
-  const remoteSchemas = await getRemoteSchemas();
-  const joinSchema = joinSchemas(joinAST, remoteSchemas);
-
-  const express = require('express');
-  const graphqlHTTP = require('express-graphql');
-
-  const app = express();
-
-  app.use('/graphql', graphqlHTTP({
-    schema: joinSchema,
-    context: new ProxyContext(remoteSchemas),
-    graphiql: true,
-    formatError: error => ({
-      message: error.message,
-      locations: error.locations,
-      stack: error.stack,
-      path: error.path
-    }),
-  }));
-
-  app.listen(4000);
-  console.log('\n\nhttp://localhost:4000/graphql');
-}
-
-main().catch(e => {
-  console.log(e);
-});
 
 function validation() {
   // TODO:
