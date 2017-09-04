@@ -19,6 +19,7 @@ import {
   GraphQLNamedType,
   GraphQLObjectType,
   GraphQLResolveInfo,
+  GraphQLField,
   IntrospectionQuery,
   isAbstractType,
 
@@ -28,7 +29,6 @@ import {
   visit,
   getVisitFn,
   visitWithTypeInfo,
-  printSchema,
   buildClientSchema,
   introspectionQuery,
   astFromValue,
@@ -173,7 +173,6 @@ export function joinSchemas(
 ): GraphQLSchema {
   const joinDefs = splitAST(joinAST);
   const schema = buildJoinSchema(joinDefs, remoteSchemas);
-  console.log(printSchema(schema));
 
   const operations = keyBy(
     joinDefs.operations.map(op => new ProxyOperation(op, remoteSchemaResolver)),
@@ -203,8 +202,11 @@ export function joinSchemas(
 
   return schema;
 
-  function getResolveWithArgs(type, field): ResolveWithArgs | undefined {
-    let args = getResolveWithDirective(field['astNode']);
+  function getResolveWithArgs(
+    type: GraphQLNamedType,
+    field: GraphQLField<any,any>
+  ): ResolveWithArgs | undefined {
+    let args = getResolveWithDirective(field.astNode);
     if (args) {
       return {
         query: operations[args.query],

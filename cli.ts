@@ -1,5 +1,6 @@
 import * as express from 'express';
 import * as graphqlHTTP from 'express-graphql';
+import { printSchema } from 'graphql';
 
 import {
   EndpointMap,
@@ -28,6 +29,7 @@ async function main() {
   const joinAST = readGraphQLFile('./join.graphql');
   const remoteSchemas = await getRemoteSchemas(endpoints);
   const joinSchema = joinSchemas(joinAST, remoteSchemas);
+  console.log(printSchema(joinSchema));
 
   const app = express();
 
