@@ -334,7 +334,6 @@ export class ProxyContext {
       operation,
       selectionSet,
     }]);
-    console.log(print(query));
     return this.remoteSchemas[api].proxy(query);
   }
 }
