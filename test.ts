@@ -17,6 +17,17 @@ import * as _ from 'lodash';
 import { joinSchemas, ProxyContext } from './index';
 import { stubType } from './utils';
 
+expect.addSnapshotSerializer({
+  print(val) {
+    return typeof val === 'string' ?
+      val.trim() :
+      JSON.stringify(val, null, 2);
+  },
+  test(val) {
+    return true;
+  },
+});
+
 function stubSchema(schema: GraphQLSchema) {
   for (const type of Object.values(schema.getTypeMap())) {
     stubType(type);
@@ -35,11 +46,10 @@ function makeProxy(schema: GraphQLSchema) {
   return async (queryAST: DocumentNode) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
-    // TODO: fix typings
-    const result = await (graphql as any)({
+    const result = await graphql({
       schema,
       source: query,
-      rootValue: {foo: "test"}
+      rootValue: {foo: "test"},
       fieldResolver: makeFieldResolver(),
     });
     return result;
@@ -62,16 +72,19 @@ function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
   expect(schema).toBeInstanceOf(GraphQLSchema);
   expect(printSchema(schema)).toMatchSnapshot();
   return async (query: string) => {
-    // TODO: fix typing
-    const result = await (graphql as any)({
+    const result = await graphql({
       schema,
       source: new Source(query, 'ClientQuery'),
       contextValue: new ProxyContext(remoteSchemas),
     });
-    expect({
+    const jsonResult = {
       ...result,
       errors: (result.errors || []).map(formatError),
-    }).toMatchSnapshot();
+    };
+    expect([
+      query,
+      jsonResult,
+    ]).toMatchSnapshot();
   };
 }
 
