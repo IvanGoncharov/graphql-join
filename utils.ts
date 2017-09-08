@@ -20,6 +20,8 @@ import {
   GraphQLNamedType,
   GraphQLScalarType,
   GraphQLObjectType,
+  GraphQLResolveInfo,
+  GraphQLFieldResolver,
 
   parse,
   visit,
@@ -29,7 +31,10 @@ import {
   buildASTSchema,
 } from 'graphql';
 
-export function stubType(type: GraphQLNamedType) {
+export function stubType(
+  type: GraphQLNamedType,
+  fieldResolver?: GraphQLFieldResolver<any, any>
+): void {
   if (type instanceof GraphQLScalarType) {
     type.serialize = (value => value);
     type.parseLiteral = astToJSON;
@@ -38,15 +43,9 @@ export function stubType(type: GraphQLNamedType) {
     type.resolveType = (obj => obj.__typename);
   } else if (type instanceof GraphQLObjectType) {
     for (const field of Object.values(type.getFields())) {
-      field.resolve = stubFieldResolver;
+      field.resolve = fieldResolver;
     }
   }
-}
-
-// proxy value or Error instance injected by the proxy
-function stubFieldResolver(source, _1, _2, info) {
-  const key = info.path && info.path.key;
-  return source && source[key];
 }
 
 // TODO: Merge into graphql-js

@@ -186,20 +186,13 @@ export function joinSchemas(
   for (const type of Object.values(schema.getTypeMap())) {
     if (isBuiltinType(type.name)) continue;
 
-    stubType(type);
-
+    stubType(type, fieldResolver);
     if (type instanceof GraphQLObjectType) {
       for (const field of Object.values(type.getFields())) {
-        const args = getResolveWithArgs(type, field);
-        if (args) {
-          // TODO: unify
-          field['resolveWith'] = args;
-          field.resolve = resolveWith(args);
-        }
+        field['resolveWith'] = getResolveWithArgs(type, field);
       }
     }
   }
-
   return schema;
 
   function getResolveWithArgs(
@@ -254,69 +247,77 @@ export function joinSchemas(
   }
 }
 
-
-function resolveWith(resolveWithArgs: ResolveWithArgs) {
-  return async (
+async function fieldResolver(
     rootValue: object,
     args: object,
     context: ProxyContext,
     info: GraphQLResolveInfo
-  ) => {
-    // FIXME: handle array
-    let rawClientSelection = info.fieldNodes[0].selectionSet;
-    const schema = info.schema;
-    const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
-    const typeInfo = new TypeInfo(info.schema);
-    typeInfo['_typeStack'].push(fieldDef.type);
-
-    let clientSelection;
-    if (rawClientSelection) {
-      // TODO: unify with graphql-faker
-      clientSelection = visit(rawClientSelection, visitWithTypeInfo(typeInfo, {
-        [Kind.FIELD]: () => {
-          const field = typeInfo.getFieldDef();
-          if (field.name.startsWith('__'))
-            return null;
-          if (field['resolveWith'])
-            return null;
-        },
-        [Kind.SELECTION_SET]: {
-          leave(node: SelectionSetNode) {
-            const type = typeInfo.getParentType()
-            if (type instanceof GraphQLObjectType) {
-              Object.values(type.getFields()).forEach(field => {
-                const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
-                if (!resolveWith) return;
-
-                const {argumentsFragment} = resolveWith;
-                if (argumentsFragment) {
-                  node = argumentsFragment.injectIntoSelectionSet(node);
-                }
-              });
-            }
-
-            if (isAbstractType(type) || node.selections.length === 0)
-              return injectTypename(node);
-            else
-              return node;
-          }
-        },
-        // FIXME: reuse variable replace code from in wrapSelection
-      }));
-    }
-
-    const {query, argumentsFragment} = resolveWithArgs;
-    const queryArgs = {
-      ...args,
-      ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
-    };
-    const result = await context.proxyToRemote(
-      query.sendTo,
-      query.operationType,
-      query.wrapSelection(queryArgs, clientSelection),
-    );
-    return query.makeRootValue(result);
+) {
+  // FIXME: fix typings in graphql-js
+  const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
+  const resolveWithArgs = fieldDef['resolveWith'] as ResolveWithArgs;
+  if (!resolveWithArgs) {
+    // proxy value or Error instance injected by the proxy
+    // FIXME: fix typing for info.path
+    return rootValue && rootValue[info.path!.key];
   }
+
+  // FIXME: handle array
+  let rawClientSelection = info.fieldNodes[0].selectionSet;
+  const schema = info.schema;
+  const typeInfo = new TypeInfo(info.schema);
+  typeInfo['_typeStack'].push(fieldDef.type);
+
+  let clientSelection;
+  if (rawClientSelection) {
+    // TODO: unify with graphql-faker
+    clientSelection = visit(rawClientSelection, visitWithTypeInfo(typeInfo, {
+      [Kind.FIELD]: () => {
+        const field = typeInfo.getFieldDef();
+        if (field.name.startsWith('__'))
+          return null;
+        if (field['resolveWith'])
+          return null;
+      },
+      [Kind.SELECTION_SET]: {
+        leave(node: SelectionSetNode) {
+          const type = typeInfo.getParentType()
+          if (type instanceof GraphQLObjectType) {
+            Object.values(type.getFields()).forEach(field => {
+              const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
+              if (!resolveWith) return;
+
+              const {argumentsFragment} = resolveWith;
+              if (argumentsFragment) {
+                node = argumentsFragment.injectIntoSelectionSet(node);
+              }
+            });
+          }
+
+          if (isAbstractType(type) || node.selections.length === 0)
+            return injectTypename(node);
+          else
+            return node;
+        }
+      },
+      // FIXME: reuse variable replace code from in wrapSelection
+    }));
+  }
+
+  const {query, argumentsFragment} = resolveWithArgs;
+  const queryArgs = {
+    ...args,
+    ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
+  };
+  const result = await context.proxyToRemote(
+    query.sendTo,
+    query.operationType,
+    query.wrapSelection(queryArgs, clientSelection),
+  );
+  return query.makeRootValue(result);
+}
+
+function resolveWith(resolveWithArgs: ResolveWithArgs) {
 }
 
 export class ProxyContext {

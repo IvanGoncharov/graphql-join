@@ -31,8 +31,6 @@ expect.addSnapshotSerializer({
 function stubSchema(schema: GraphQLSchema) {
   for (const type of Object.values(schema.getTypeMap())) {
     stubType(type);
-    // FIXME
-    type['resolve'] = undefined;
   }
 }
 
@@ -46,10 +44,10 @@ function makeProxy(schema: GraphQLSchema) {
   return async (queryAST: DocumentNode) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
+    debugger;
     const result = await graphql({
       schema,
       source: query,
-      rootValue: {foo: "test"},
       fieldResolver: makeFieldResolver(),
     });
     return result;
