@@ -15,7 +15,7 @@ import {
 import * as _ from 'lodash';
 
 import { joinSchemas, ProxyContext } from './index';
-import { stubType } from './utils';
+import { stubSchema } from './utils';
 
 expect.addSnapshotSerializer({
   print(val) {
@@ -28,26 +28,24 @@ expect.addSnapshotSerializer({
   },
 });
 
-function stubSchema(schema: GraphQLSchema) {
-  for (const type of Object.values(schema.getTypeMap())) {
-    stubType(type);
+function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
+  return (
+    _1, _2, _3,
+    {fieldName, parentType}: GraphQLResolveInfo
+  ): any {
+    return `${schemaName}::${parentType.name}::${fieldName}`;
   }
 }
 
-function makeFieldResolver(): GraphQLFieldResolver<any,any> {
-  return (_1, _2, _3, {returnType}: GraphQLResolveInfo): any => {
-    return 'test';
-  }
-}
-
-function makeProxy(name: string, schema: GraphQLSchema) {
+function makeProxy(schemaName: string, schema: GraphQLSchema) {
   return async (queryAST: DocumentNode) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
+    debugger;
     const result = await graphql({
       schema,
       source: query,
-      fieldResolver: makeFieldResolver(),
+      fieldResolver: fakeFieldResolver(schemaName),
     });
     return result;
   };

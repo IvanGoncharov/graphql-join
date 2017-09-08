@@ -56,8 +56,7 @@ import {
 import {
   SplittedAST,
 
-  stubType,
-  isBuiltinType,
+  stubSchema,
   splitAST,
   makeASTDocument,
   schemaToASTTypes,
@@ -188,16 +187,10 @@ export function joinSchemas(
     f => f.name
   );
 
-  for (const type of Object.values(schema.getTypeMap())) {
-    if (isBuiltinType(type.name)) continue;
-
-    stubType(type, fieldResolver);
-    if (type instanceof GraphQLObjectType) {
-      for (const field of Object.values(type.getFields())) {
-        field['resolveWith'] = getResolveWithArgs(type, field);
-      }
-    }
-  }
+  stubSchema(schema, (type: GraphQLNamedType, field: GraphQLField<any, any>) {
+    field['resolveWith'] = getResolveWithArgs(type, field);
+    field.resolve = fieldResolver;
+  });
   return schema;
 
   function getResolveWithArgs(
@@ -269,7 +262,6 @@ async function fieldResolver(
     // FIXME: fix typing for info.path
     return rootValue && rootValue[info.path!.key];
   }
-  debugger;
 
   // FIXME: handle array
   let rawClientSelection = info.fieldNodes[0].selectionSet;

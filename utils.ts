@@ -31,9 +31,20 @@ import {
   buildASTSchema,
 } from 'graphql';
 
-export function stubType(
+export function stubSchema(
+  schema: GraphQLSchema,
+  stubField?: (GraphQLNamedType, GraphQLField<any, any>) => void
+): void {
+  for (const type of Object.values(schema.getTypeMap())) {
+    if (!isBuiltinType(type.name)) {
+      stubType(type, stubField);
+    }
+  }
+}
+
+function stubType(
   type: GraphQLNamedType,
-  fieldResolver?: GraphQLFieldResolver<any, any>
+  stubField?: (GraphQLNamedType, GraphQLField<any, any>) => void
 ): void {
   if (type instanceof GraphQLScalarType) {
     type.serialize = (value => value);
@@ -43,7 +54,10 @@ export function stubType(
     type.resolveType = (obj => obj.__typename);
   } else if (type instanceof GraphQLObjectType) {
     for (const field of Object.values(type.getFields())) {
-      field.resolve = fieldResolver;
+      field.resolve = undefined;
+      if (stubField) {
+        stubField(type, field);
+      }
     }
   }
 }
