@@ -40,11 +40,10 @@ function makeFieldResolver(): GraphQLFieldResolver<any,any> {
   }
 }
 
-function makeProxy(schema: GraphQLSchema) {
+function makeProxy(name: string, schema: GraphQLSchema) {
   return async (queryAST: DocumentNode) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
-    debugger;
     const result = await graphql({
       schema,
       source: query,
@@ -61,7 +60,10 @@ function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
   const remoteSchemas = _.mapValues(testSchemas, (sdl, name) => {
     const schema = buildSchema(new Source(sdl, name));
     stubSchema(schema);
-    return { schema, proxy: makeProxy(schema) };
+    return {
+      schema,
+      proxy: makeProxy(name, schema),
+    };
   });
 
   const joinAST = parse(new Source(joinSDL, 'Join SDL'));
@@ -87,6 +89,7 @@ function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
 }
 
 describe('custom Query type', () => {
+
   test('one schema', async () => {
     const execute = testJoin({
       test: 'type Query { foo: String, bar:String }',
@@ -98,6 +101,7 @@ describe('custom Query type', () => {
     `);
     await execute('{ foo }');
   });
+
   test('two schemas', async () => {
     const execute = testJoin({
       test1: 'type Query { foo: String, bar: String }',
@@ -114,4 +118,33 @@ describe('custom Query type', () => {
     await execute('{ baz }');
     await execute('{ foo baz }');
   });
+
+});
+
+describe('grafting tests', () => {
+
+  test('extend Query type', async () => {
+    const execute = testJoin({
+      test1: `type Query { foo: String }`,
+      test2: `
+        schema { query: Test2Query }
+        type Test2Query { bar: String }
+        type Bar { baz: String }
+      `
+    },`
+      schema {
+        query: Query # test1 Query
+      }
+      extend type Query {
+        bar: Bar @resolveWith(query: "bar")
+      }
+      query bar @send(to: "test2") {
+        bar { ...CLIENT_SELECTION }
+      }
+    `);
+    await execute('{ foo }');
+    await execute('{ bar { baz } }');
+    await execute('{ foo bar { baz } }');
+  });
+
 });

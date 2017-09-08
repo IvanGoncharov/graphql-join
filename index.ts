@@ -21,7 +21,10 @@ import {
   GraphQLResolveInfo,
   GraphQLField,
   IntrospectionQuery,
+
+  isLeafType,
   isAbstractType,
+  getNamedType,
 
   TypeInfo,
   print,
@@ -64,6 +67,8 @@ import {
   buildSchemaFromSDL,
 } from './utils';
 
+// PROXY:
+// ratelimiting for proxy queries
 // GLOBAL TODO:
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
@@ -213,7 +218,7 @@ export function joinSchemas(
       // Root type always have only one origin type
       const { originAPI } = (type['originTypes'] as OriginTypes)[0];
       return {
-        query: operationForRootField(operationType, originAPI, field.name),
+        query: operationForRootField(operationType, originAPI, field),
       };
     }
     return undefined;
@@ -232,10 +237,13 @@ export function joinSchemas(
   function operationForRootField(
     operationType: OperationTypeNode,
     sendTo: string,
-    fieldName: string
+    field: GraphQLField<any, any>
   ): ProxyOperation {
+    const isLeaf = isLeafType(getNamedType(field.type));
     const ast = parse(
-      `${operationType} @send(to: "${sendTo}") { ${fieldName} { ...CLIENT_SELECTION } }`,
+      `${operationType} @send(to: "${sendTo}") {
+         ${field.name}${ isLeaf ? '' : ' { ...CLIENT_SELECTION }' }
+      }`,
       { noLocation: true }
     );
     const operation = ast.definitions[0] as OperationDefinitionNode;
@@ -261,6 +269,7 @@ async function fieldResolver(
     // FIXME: fix typing for info.path
     return rootValue && rootValue[info.path!.key];
   }
+  debugger;
 
   // FIXME: handle array
   let rawClientSelection = info.fieldNodes[0].selectionSet;
