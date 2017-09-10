@@ -140,9 +140,9 @@ describe('grafting tests', () => {
         bar { ...CLIENT_SELECTION }
       }
     `);
-    await execute('{ foo }');
+    //await execute('{ foo }');
     await execute('{ bar { baz } }');
-    await execute('{ foo bar { baz } }');
+    //await execute('{ foo bar { baz } }');
   });
 
 });

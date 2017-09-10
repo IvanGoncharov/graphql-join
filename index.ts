@@ -58,6 +58,7 @@ import {
 
   stubSchema,
   splitAST,
+  injectErrors,
   makeASTDocument,
   schemaToASTTypes,
   addPrefixToTypeNode,
@@ -68,6 +69,7 @@ import {
 
 // PROXY:
 // ratelimiting for proxy queries
+// proxy Relay node, ID => ${schemaName}/ID
 // GLOBAL TODO:
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
@@ -187,7 +189,7 @@ export function joinSchemas(
     f => f.name
   );
 
-  stubSchema(schema, (type: GraphQLNamedType, field: GraphQLField<any, any>) {
+  stubSchema(schema, (type, field) => {
     field['resolveWith'] = getResolveWithArgs(type, field);
     field.resolve = fieldResolver;
   });
@@ -465,15 +467,15 @@ class ProxyOperation {
   }
 
   makeRootValue(result: ExecutionResult): any {
-    // FIXME: inject errors
-    return extractByPath(result!.data!, this._resultPath);
+    const data = injectErrors(result);
+    return data && extractByPath(data, this._resultPath);
   }
 }
 
 function extractByPath(obj: object, path: string[]) {
   let result = obj;
   for (const prop of path) {
-    if (result == null) {
+    if (result == null || result instanceof Error) {
       return result;
     }
 

@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { cloneDeep, set as pathSet } from 'lodash';
 
 import {
   Kind,
@@ -16,12 +17,15 @@ import {
   OperationDefinitionNode,
   TypeExtensionDefinitionNode,
 
+  GraphQLError,
   GraphQLSchema,
+  GraphQLField,
   GraphQLNamedType,
   GraphQLScalarType,
   GraphQLObjectType,
   GraphQLResolveInfo,
   GraphQLFieldResolver,
+  ExecutionResult,
 
   parse,
   visit,
@@ -31,9 +35,10 @@ import {
   buildASTSchema,
 } from 'graphql';
 
+type StubFieldFn = (type: GraphQLNamedType, field: GraphQLField<any, any>) => void;
 export function stubSchema(
   schema: GraphQLSchema,
-  stubField?: (GraphQLNamedType, GraphQLField<any, any>) => void
+  stubField?: StubFieldFn
 ): void {
   for (const type of Object.values(schema.getTypeMap())) {
     if (!isBuiltinType(type.name)) {
@@ -44,7 +49,7 @@ export function stubSchema(
 
 function stubType(
   type: GraphQLNamedType,
-  stubField?: (GraphQLNamedType, GraphQLField<any, any>) => void
+  stubField?: StubFieldFn
 ): void {
   if (type instanceof GraphQLScalarType) {
     type.serialize = (value => value);
@@ -261,4 +266,28 @@ export function buildSchemaFromSDL(defs: SplittedAST) {
 
   const extensionsAST = makeASTDocument(defs.typeExtensions);
   return extendSchema(schema, extensionsAST);
+}
+
+export function injectErrors(result: ExecutionResult): object | void {
+  if (result.errors == null) {
+    return result.data;
+  }
+
+  const globalErrors: Error[] = [];
+  const data = result.data && cloneDeep(result.data);
+  for (const errObj of (result.errors || [])) {
+    const err = new Error(errObj.message);
+    if (errObj.path) {
+      // Recreate root value up to a place where original error was thrown
+      pathSet(data, errObj.path, err);
+    } else {
+      globalErrors.push(err);
+    }
+  }
+
+  if (globalErrors.length !== 0) {
+    const message = globalErrors.map(err => err.message).join('\n');
+    return new Error(message);
+  }
+  return data;
 }
