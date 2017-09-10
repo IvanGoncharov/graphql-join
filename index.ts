@@ -41,7 +41,6 @@ import {
 import {
   keyBy,
   flatten,
-  fromPairs,
   mapValues,
 } from 'lodash';
 
@@ -74,15 +73,15 @@ import {
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
 
-export type SchemaProxy = (query: DocumentNode) => Promise<ExecutionResult>;
+export type SchemaProxyFn = (query: DocumentNode) => Promise<ExecutionResult>;
+export type SchemaProxyFnMap = { [schemaName: string]: SchemaProxyFn };
 export type RemoteSchema = {
   schema: GraphQLSchema,
-  proxy: SchemaProxy,
   prefix?: string
 };
-export type RemoteSchemasMap = { [name: string]: RemoteSchema };
+export type RemoteSchemasMap = { [schemaName: string]: RemoteSchema };
 
-function makeProxy(settings): SchemaProxy {
+function makeProxy(settings): SchemaProxyFn {
   const { url, headers } = settings;
   const client = new GraphQLClient(url, { headers });
   return async (queryDocument: DocumentNode) => {
@@ -97,18 +96,27 @@ function makeProxy(settings): SchemaProxy {
 const parsedIntrospectionQuery = parse(introspectionQuery);
 export async function getRemoteSchemas(
   endpoints: EndpointMap
-): Promise<RemoteSchemasMap> {
+): Promise<{remoteSchemas: RemoteSchemasMap, proxyFns: SchemaProxyFnMap}> {
   const promises = Object.entries(endpoints).map(
     async ([name, endpoint]) => {
       const {prefix, ...settings} = endpoint;
-      const proxy = makeProxy(settings);
-      const introspection = (await proxy(parsedIntrospectionQuery)).data;
+      const proxyFn = makeProxy(settings);
+      const introspection = (await proxyFn(parsedIntrospectionQuery)).data;
       const schema = buildClientSchema(introspection as IntrospectionQuery);
 
-      return [name, { prefix, proxy, schema }];
+      return {name, remoteSchema: { prefix, schema }, proxyFn };
     }
   );
-  return Promise.all(promises).then(pairs => fromPairs(pairs));
+
+  return Promise.all(promises).then(result => {
+    const remoteSchemas = {};
+    const proxyFns = {};
+    for (const {name, remoteSchema, proxyFn} of result) {
+      remoteSchemas[name] = remoteSchema;
+      proxyFns[name] = proxyFn;
+    }
+    return { remoteSchemas, proxyFns };
+  });
 }
 
 type Endpoint = {
@@ -325,11 +333,11 @@ function resolveWith(resolveWithArgs: ResolveWithArgs) {
 
 export class ProxyContext {
   constructor(
-    private remoteSchemas: RemoteSchemasMap
+    private proxyFns: SchemaProxyFnMap
   ) {}
 
   proxyToRemote(
-    api: string,
+    schemaName: string,
     operation: OperationTypeNode,
     selectionSet: SelectionSetNode
   ): Promise<ExecutionResult> {
@@ -338,7 +346,8 @@ export class ProxyContext {
       operation,
       selectionSet,
     }]);
-    return this.remoteSchemas[api].proxy(query);
+    // FIXME: error if invalid name
+    return this.proxyFns[schemaName](query);
   }
 }
 

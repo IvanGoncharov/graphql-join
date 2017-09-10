@@ -27,7 +27,7 @@ const endpoints: EndpointMap = {
 
 async function main() {
   const joinAST = readGraphQLFile('./join.graphql');
-  const remoteSchemas = await getRemoteSchemas(endpoints);
+  const {remoteSchemas, proxyFns} = await getRemoteSchemas(endpoints);
   const joinSchema = joinSchemas(joinAST, remoteSchemas);
   console.log(printSchema(joinSchema));
 
@@ -35,7 +35,7 @@ async function main() {
 
   app.use('/graphql', graphqlHTTP({
     schema: joinSchema,
-    context: new ProxyContext(remoteSchemas),
+    context: new ProxyContext(proxyFns),
     graphiql: true,
     formatError: error => ({
       message: error.message,

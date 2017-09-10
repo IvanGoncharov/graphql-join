@@ -38,16 +38,14 @@ function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
 }
 
 function makeProxy(schemaName: string, schema: GraphQLSchema) {
-  return async (queryAST: DocumentNode) => {
+  return (queryAST: DocumentNode) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
-    debugger;
-    const result = await graphql({
+    return graphql({
       schema,
       source: query,
       fieldResolver: fakeFieldResolver(schemaName),
     });
-    return result;
   };
 }
 
@@ -58,10 +56,7 @@ function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
   const remoteSchemas = _.mapValues(testSchemas, (sdl, name) => {
     const schema = buildSchema(new Source(sdl, name));
     stubSchema(schema);
-    return {
-      schema,
-      proxy: makeProxy(name, schema),
-    };
+    return { schema };
   });
 
   const joinAST = parse(new Source(joinSDL, 'Join SDL'));
@@ -69,20 +64,33 @@ function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
 
   expect(schema).toBeInstanceOf(GraphQLSchema);
   expect(printSchema(schema)).toMatchSnapshot();
-  return async (query: string) => {
+  return async (
+    query: string,
+    results?: { [schemaName: string]: ExecutionResult }
+  ) => {
+    const proxyFns = _.mapValues(remoteSchemas, ({schema}, name) => {
+      if (result && result[name]) {
+        return () => result[name];
+      }
+      return makeProxy(name, schema);
+    });
+
     const result = await graphql({
       schema,
       source: new Source(query, 'ClientQuery'),
-      contextValue: new ProxyContext(remoteSchemas),
+      contextValue: new ProxyContext(proxyFns),
     });
-    const jsonResult = {
-      ...result,
-      errors: (result.errors || []).map(formatError),
-    };
     expect([
       query,
-      jsonResult,
+      resultToJSON(result),
     ]).toMatchSnapshot();
+  };
+}
+
+function resultToJSON(result) {
+  return {
+    ...result,
+    errors: (result.errors || []).map(formatError),
   };
 }
 
