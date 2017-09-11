@@ -79,3 +79,96 @@ exports[`grafting tests extend Query type 8`] = `
   }
 ]
 `;
+
+exports[`grafting tests recursive extend 1`] = `
+type Bar {
+  barValue: String
+  foo: Foo
+}
+
+type Foo {
+  fooValue: String
+  bar: Bar
+}
+
+type Query {
+  foo: Foo
+}
+`;
+
+exports[`grafting tests recursive extend 2`] = `
+{
+  foo {
+    fooValue
+  }
+}
+`;
+
+exports[`grafting tests recursive extend 3`] = `
+[
+  "{ foo { fooValue } }",
+  {
+    "data": {
+      "foo": {
+        "fooValue": "test1::Foo::fooValue"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`grafting tests recursive extend 4`] = `
+{
+  foo {
+    fooValue
+  }
+}
+`;
+
+exports[`grafting tests recursive extend 5`] = `
+{
+  bar {
+    barValue
+  }
+}
+`;
+
+exports[`grafting tests recursive extend 6`] = `
+{
+  foo {
+    fooValue
+  }
+}
+`;
+
+exports[`grafting tests recursive extend 7`] = `
+{
+  bar {
+    barValue
+  }
+}
+`;
+
+exports[`grafting tests recursive extend 8`] = `
+[
+  "\\n      {\\n        foo {\\n          fooValue\\n          bar {\\n            barValue\\n            foo {\\n              fooValue\\n              bar {\\n                barValue\\n              }\\n            }\\n          }\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "fooValue": "test1::Foo::fooValue",
+        "bar": {
+          "barValue": "test2::Bar::barValue",
+          "foo": {
+            "fooValue": "test1::Foo::fooValue",
+            "bar": {
+              "barValue": "test2::Bar::barValue"
+            }
+          }
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;
