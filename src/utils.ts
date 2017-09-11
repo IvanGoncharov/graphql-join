@@ -9,6 +9,7 @@ import {
   DocumentNode,
   NamedTypeNode,
   DefinitionNode,
+  SelectionSetNode,
   TypeDefinitionNode,
   FieldDefinitionNode,
   SchemaDefinitionNode,
@@ -290,4 +291,21 @@ export function injectErrors(result: ExecutionResult): object | void {
     return new Error(message);
   }
   return data;
+}
+
+export function injectTypename(node: SelectionSetNode) {
+  // TODO: don't add duplicating __typename
+  return {
+    ...node,
+    selections: [
+      ...node.selections,
+      {
+        kind: Kind.FIELD,
+        name: {
+          kind: Kind.NAME,
+          value: '__typename',
+        },
+      },
+    ],
+  };
 }

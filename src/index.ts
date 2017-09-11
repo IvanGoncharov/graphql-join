@@ -58,6 +58,7 @@ import {
   stubSchema,
   splitAST,
   injectErrors,
+  injectTypename,
   makeASTDocument,
   schemaToASTTypes,
   addPrefixToTypeNode,
@@ -349,23 +350,6 @@ export class ProxyContext {
     // FIXME: error if invalid name
     return this.proxyFns[schemaName](query);
   }
-}
-
-
-function injectTypename(node: SelectionSetNode) {
-  return {
-    ...node,
-    selections: [
-      ...node.selections,
-      {
-        kind: Kind.FIELD,
-        name: {
-          kind: Kind.NAME,
-          value: '__typename',
-        },
-      },
-    ],
-  };
 }
 
 class ArgumentsFragment {
