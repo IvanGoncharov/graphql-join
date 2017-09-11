@@ -1,9 +1,11 @@
 import {
   Source,
   DocumentNode,
+  GraphQLError,
   GraphQLSchema,
   GraphQLFieldResolver,
   GraphQLResolveInfo,
+  ExecutionResult,
 
   graphql,
   parse,
@@ -32,7 +34,7 @@ function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
   return (
     _1, _2, _3,
     {fieldName, parentType}: GraphQLResolveInfo
-  ): any {
+  ) => {
     return `${schemaName}::${parentType.name}::${fieldName}`;
   }
 }
@@ -51,8 +53,7 @@ function makeProxy(schemaName: string, schema: GraphQLSchema) {
 
 type TestSchema = string;
 type TestSchemasMap = { [name: string]: TestSchema };
-type QueryExecute = (query: string) => Promise<void>;
-function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
+function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
   const remoteSchemas = _.mapValues(testSchemas, (sdl, name) => {
     const schema = buildSchema(new Source(sdl, name));
     stubSchema(schema);
@@ -69,10 +70,10 @@ function testJoin(testSchemas: TestSchemasMap, joinSDL: string): QueryExecute {
     results?: { [schemaName: string]: ExecutionResult }
   ) => {
     const proxyFns = _.mapValues(remoteSchemas, ({schema}, name) => {
-      if (result && result[name]) {
-        return () => result[name];
+      if (results && results[name]) {
+        return (() => Promise.resolve(results[name]));
       }
-      return makeProxy(name, schema);
+      return makeProxy(name, schema)
     });
 
     const result = await graphql({
@@ -134,7 +135,7 @@ describe('grafting tests', () => {
       test1: `type Query { foo: String }`,
       test2: `
         schema { query: Test2Query }
-        type Test2Query { bar: String }
+        type Test2Query { bar: Bar }
         type Bar { baz: String }
       `
     },`
@@ -148,9 +149,40 @@ describe('grafting tests', () => {
         bar { ...CLIENT_SELECTION }
       }
     `);
-    //await execute('{ foo }');
+    await execute('{ foo }');
     await execute('{ bar { baz } }');
-    //await execute('{ foo bar { baz } }');
+    await execute('{ foo bar { baz } }');
+  });
+
+});
+
+describe('errors tests', () => {
+
+  test('extend Query type', async () => {
+    const execute = testJoin({
+      test: `
+        type Query { foo: Bar }
+        type Bar { bar: String }
+      `,
+    },'schema { query: Query }');
+
+    await execute('{ foo { bar } }', { test: {
+      errors: [ new GraphQLError('global error') ],
+    }});
+    await execute('{ foo { bar } }', { test: {
+      errors: [
+        new GraphQLError('first global error'),
+        new GraphQLError('second global error')
+      ],
+    }});
+    await execute('{ foo { bar } }', {
+      test: {
+        data { foo: { bar: null } },
+        errors: [
+          new GraphQLError('error with path', null, null, null, ['foo', 'bar'])
+        ],
+      }
+    });
   });
 
 });
