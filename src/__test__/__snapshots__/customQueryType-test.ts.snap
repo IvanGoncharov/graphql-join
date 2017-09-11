@@ -1,0 +1,93 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`custom Query type one schema 1`] = `
+type Query {
+  foo: String
+}
+`;
+
+exports[`custom Query type one schema 2`] = `
+{
+  foo
+}
+`;
+
+exports[`custom Query type one schema 3`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": "test::Query::foo"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`custom Query type two schemas 1`] = `
+type Query {
+  foo: String
+  baz: String
+}
+`;
+
+exports[`custom Query type two schemas 2`] = `
+{
+  foo
+}
+`;
+
+exports[`custom Query type two schemas 3`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": "test1::Query::foo"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`custom Query type two schemas 4`] = `
+{
+  baz
+}
+`;
+
+exports[`custom Query type two schemas 5`] = `
+[
+  "{ baz }",
+  {
+    "data": {
+      "baz": "test2::Query::baz"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`custom Query type two schemas 6`] = `
+{
+  foo
+}
+`;
+
+exports[`custom Query type two schemas 7`] = `
+{
+  baz
+}
+`;
+
+exports[`custom Query type two schemas 8`] = `
+[
+  "{ foo baz }",
+  {
+    "data": {
+      "foo": "test1::Query::foo",
+      "baz": "test2::Query::baz"
+    },
+    "errors": []
+  }
+]
+`;

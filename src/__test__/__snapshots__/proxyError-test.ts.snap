@@ -1,0 +1,89 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[` 1`] = `
+type Bar {
+  bar: String
+}
+
+type Query {
+  foo: Bar
+}
+`;
+
+exports[`proxy errors error with path 1`] = `
+[
+  "{ foo { bar } }",
+  {
+    "errors": [
+      {
+        "message": "error with path",
+        "locations": [
+          {
+            "line": 1,
+            "column": 9
+          }
+        ],
+        "path": [
+          "foo",
+          "bar"
+        ]
+      }
+    ],
+    "data": {
+      "foo": {
+        "bar": null
+      }
+    }
+  }
+]
+`;
+
+exports[`proxy errors global error 1`] = `
+[
+  "{ foo { bar } }",
+  {
+    "errors": [
+      {
+        "message": "global error",
+        "locations": [
+          {
+            "line": 1,
+            "column": 3
+          }
+        ],
+        "path": [
+          "foo"
+        ]
+      }
+    ],
+    "data": {
+      "foo": null
+    }
+  }
+]
+`;
+
+exports[`proxy errors multiple global errors 1`] = `
+[
+  "{ foo { bar } }",
+  {
+    "errors": [
+      {
+        "message": "first global error\\nsecond global error",
+        "locations": [
+          {
+            "line": 1,
+            "column": 3
+          }
+        ],
+        "path": [
+          "foo"
+        ]
+      }
+    ],
+    "data": {
+      "foo": null
+    }
+  }
+]
+`;

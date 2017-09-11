@@ -1,0 +1,81 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`grafting tests extend Query type 1`] = `
+type Bar {
+  baz: String
+}
+
+type Query {
+  foo: String
+  bar: Bar
+}
+`;
+
+exports[`grafting tests extend Query type 2`] = `
+{
+  foo
+}
+`;
+
+exports[`grafting tests extend Query type 3`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": "test1::Query::foo"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`grafting tests extend Query type 4`] = `
+{
+  bar {
+    baz
+  }
+}
+`;
+
+exports[`grafting tests extend Query type 5`] = `
+[
+  "{ bar { baz } }",
+  {
+    "data": {
+      "bar": {
+        "baz": "test2::Bar::baz"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`grafting tests extend Query type 6`] = `
+{
+  foo
+}
+`;
+
+exports[`grafting tests extend Query type 7`] = `
+{
+  bar {
+    baz
+  }
+}
+`;
+
+exports[`grafting tests extend Query type 8`] = `
+[
+  "{ foo bar { baz } }",
+  {
+    "data": {
+      "foo": "test1::Query::foo",
+      "bar": {
+        "baz": "test2::Bar::baz"
+      }
+    },
+    "errors": []
+  }
+]
+`;
