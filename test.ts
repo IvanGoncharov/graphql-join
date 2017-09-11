@@ -1,3 +1,5 @@
+declare var describe, test, expect;
+
 import {
   Source,
   DocumentNode,
@@ -177,12 +179,17 @@ describe('errors tests', () => {
     }});
     await execute('{ foo { bar } }', {
       test: {
-        data { foo: { bar: null } },
+        data: { foo: { bar: null } },
         errors: [
-          new GraphQLError('error with path', null, null, null, ['foo', 'bar'])
+          new GraphQLError(
+            'error with path',
+            undefined, undefined, undefined,
+            ['foo', 'bar']
+          )
         ],
       }
     });
+
   });
 
 });

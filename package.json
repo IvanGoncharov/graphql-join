@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest --runInBand",
+    "test": "tsc --noEmit -p . && jest --runInBand",
     "start": "ts-node cli.ts",
     "debug": "node --inspect --inspect-brk $(npm bin)/jest",
     "lint": "tslint --type-check --project tsconfig.json *.ts"
