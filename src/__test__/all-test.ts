@@ -18,8 +18,8 @@ import {
 } from 'graphql';
 import * as _ from 'lodash';
 
-import { joinSchemas, ProxyContext } from './index';
-import { stubSchema } from './utils';
+import { joinSchemas, ProxyContext } from '../index';
+import { stubSchema } from '../utils';
 
 expect.addSnapshotSerializer({
   print(val) {

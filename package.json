@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "tsc --noEmit -p . && jest --runInBand",
-    "start": "ts-node cli.ts",
+    "test": "tsc --noEmit && jest --runInBand",
+    "start": "ts-node src/cli.ts",
     "debug": "node --inspect --inspect-brk $(npm bin)/jest",
     "lint": "tslint --type-check --project tsconfig.json *.ts"
   },
@@ -38,7 +38,7 @@
     "transform": {
       ".ts": "<rootDir>/node_modules/ts-jest/preprocessor.js"
     },
-    "testRegex": "test.ts$",
+    "testRegex": ".*/__test__/.*-test\\.ts$",
     "moduleFileExtensions": [
       "ts",
       "js"
