@@ -80,6 +80,59 @@ exports[`grafting tests extend Query type 8`] = `
 ]
 `;
 
+exports[`grafting tests recursive Query type 1`] = `
+type Query {
+  query: Query
+  foo: String
+}
+`;
+
+exports[`grafting tests recursive Query type 2`] = `
+{
+  foo
+}
+`;
+
+exports[`grafting tests recursive Query type 3`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": "test::Query::foo"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`grafting tests recursive Query type 4`] = `
+{
+  query {
+    __typename
+  }
+}
+`;
+
+exports[`grafting tests recursive Query type 5`] = `
+{
+  foo
+}
+`;
+
+exports[`grafting tests recursive Query type 6`] = `
+[
+  "{ query { foo } }",
+  {
+    "data": {
+      "query": {
+        "foo": "test::Query::foo"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
 exports[`grafting tests recursive extend 1`] = `
 type Bar {
   barValue: String

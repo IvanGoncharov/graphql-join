@@ -3,6 +3,18 @@ declare var describe, test;
 import { testJoin } from './testUtils';
 
 describe('grafting tests', () => {
+  test('recursive Query type', async () => {
+    const execute = testJoin({
+      test: `
+        type Query {
+          query: Query
+          foo: String
+        }
+      `,
+    }, 'schema { query: Query }');
+    await execute('{ foo }');
+    await execute('{ query { foo } }');
+  });
   test('extend Query type', async () => {
     const execute = testJoin({
       test1: `type Query { foo: String }`,
