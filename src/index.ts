@@ -1,8 +1,6 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   Kind,
-  ASTNode,
-  NameNode,
   FieldNode,
   DocumentNode,
   VariableNode,
@@ -32,7 +30,6 @@ import {
   print,
   parse,
   visit,
-  getVisitFn,
   visitWithTypeInfo,
   buildClientSchema,
   introspectionQuery,
@@ -68,6 +65,7 @@ import {
   getTypesWithDependencies,
   buildSchemaFromSDL,
   fieldToSelectionSet,
+  visitWithResultPath,
 } from './utils';
 
 // PROXY:
@@ -455,46 +453,6 @@ function extractByPath(obj: any, path: string[]) {
     result = result[prop];
   }
   return result;
-}
-
-function visitWithResultPath(resultPath: string[], visitor) {
-  return {
-    enter(node) {
-      addToPath(node);
-      const fn = getVisitFn(visitor, node.kind, /* isLeaving */ false);
-      if (fn) {
-        const result = fn.apply(visitor, arguments);
-        if (result !== undefined) {
-          resultPath.pop();
-
-          if (isNode(result)) {
-            addToPath(node);
-          }
-        }
-        return result;
-      }
-    },
-    leave(node) {
-      const fn = getVisitFn(visitor, node.kind, /* isLeaving */ true);
-      let result;
-      if (fn) {
-        result = fn.apply(visitor, arguments);
-      }
-
-      resultPath.pop();
-      return result;
-    }
-  };
-
-  function addToPath(node: ASTNode) {
-    if (node.kind === Kind.FIELD) {
-      resultPath.push((node.alias || node.name).value);
-    }
-  }
-
-  function isNode(maybeNode) {
-    return maybeNode && typeof maybeNode.kind === 'string';
-  }
 }
 
 function validation() {

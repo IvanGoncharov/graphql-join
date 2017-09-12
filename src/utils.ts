@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { cloneDeep, set as pathSet } from 'lodash';
 
 import {
+  ASTNode,
   Kind,
   Source,
   NameNode,
@@ -35,6 +36,7 @@ import {
   isAbstractType,
   extendSchema,
   buildASTSchema,
+  getVisitFn,
 } from 'graphql';
 
 type StubFieldFn = (type: GraphQLNamedType, field: GraphQLField<any, any>) => void;
@@ -336,4 +338,44 @@ export function fieldToSelectionSet(
       }),
     }],
   };
+}
+
+export function visitWithResultPath(resultPath: string[], visitor) {
+  return {
+    enter(node) {
+      addToPath(node);
+      const fn = getVisitFn(visitor, node.kind, /* isLeaving */ false);
+      if (fn) {
+        const result = fn.apply(visitor, arguments);
+        if (result !== undefined) {
+          resultPath.pop();
+
+          if (isNode(result)) {
+            addToPath(node);
+          }
+        }
+        return result;
+      }
+    },
+    leave(node) {
+      const fn = getVisitFn(visitor, node.kind, /* isLeaving */ true);
+      let result;
+      if (fn) {
+        result = fn.apply(visitor, arguments);
+      }
+
+      resultPath.pop();
+      return result;
+    }
+  };
+
+  function addToPath(node: ASTNode) {
+    if (node.kind === Kind.FIELD) {
+      resultPath.push((node.alias || node.name).value);
+    }
+  }
+
+  function isNode(maybeNode) {
+    return maybeNode && typeof maybeNode.kind === 'string';
+  }
 }
