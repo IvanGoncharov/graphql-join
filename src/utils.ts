@@ -1,5 +1,10 @@
 import { readFileSync } from 'fs';
-import { cloneDeep, set as pathSet } from 'lodash';
+import {
+  keyBy,
+  mapValues,
+  cloneDeep,
+  set as pathSet
+} from 'lodash';
 
 import {
   ASTNode,
@@ -8,6 +13,7 @@ import {
   NameNode,
   TypeNode,
   DocumentNode,
+  VariableNode,
   NamedTypeNode,
   DefinitionNode,
   SelectionSetNode,
@@ -22,6 +28,7 @@ import {
   GraphQLError,
   GraphQLSchema,
   GraphQLField,
+  GraphQLInputType,
   GraphQLNamedType,
   GraphQLScalarType,
   GraphQLObjectType,
@@ -32,6 +39,8 @@ import {
   parse,
   visit,
   printSchema,
+  typeFromAST,
+  // FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
   astFromValue,
   isAbstractType,
   extendSchema,
@@ -397,4 +406,28 @@ export function extractByPath(obj: any, path: string[]) {
     }
   }
   return result;
+}
+
+export type OperationArgToTypeMap = { [ argName: string ]: GraphQLInputType };
+
+export function getOperationArgToTypeMap(
+  schema: GraphQLSchema,
+  operationDef: OperationDefinitionNode
+): OperationArgToTypeMap {
+  return mapValues(
+    keyBy(operationDef.variableDefinitions, ({variable}) => variable.name.value),
+    node => typeFromAST(schema, node.type) as GraphQLInputType
+  );
+}
+
+export function replaceVariablesVisitor(
+  args: object,
+  argTypes: OperationArgToTypeMap
+): object {
+  return {
+    [Kind.VARIABLE]: (node: VariableNode) => {
+      const argName = node.name.value;
+      return astFromValue(args[argName], argTypes[argName]);
+    },
+  }
 }

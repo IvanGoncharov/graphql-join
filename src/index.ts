@@ -3,7 +3,6 @@ import {
   Kind,
   FieldNode,
   DocumentNode,
-  VariableNode,
   NamedTypeNode,
   DirectiveNode,
   SelectionSetNode,
@@ -15,7 +14,6 @@ import {
 
   ExecutionResult,
   GraphQLSchema,
-  GraphQLInputType,
   GraphQLNamedType,
   GraphQLObjectType,
   GraphQLResolveInfo,
@@ -34,8 +32,6 @@ import {
   visitWithTypeInfo,
   buildClientSchema,
   introspectionQuery,
-  astFromValue,
-  typeFromAST,
 } from 'graphql';
 
 import {
@@ -68,6 +64,10 @@ import {
   fieldToSelectionSet,
   visitWithResultPath,
   extractByPath,
+
+  OperationArgToTypeMap,
+  getOperationArgToTypeMap,
+  replaceVariablesVisitor,
 } from './utils';
 
 // PROXY:
@@ -77,8 +77,6 @@ import {
 // GLOBAL TODO:
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
-
-// FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
 
 export type SchemaProxyFn = (query: DocumentNode) => Promise<ExecutionResult>;
 export type SchemaProxyFnMap = { [schemaName: string]: SchemaProxyFn };
@@ -273,11 +271,15 @@ function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undef
   const clientSelection = info.fieldNodes[0].selectionSet;
   if (!clientSelection) return;
 
-  const typeInfo = new TypeInfo(info.schema);
+  const {schema, variableValues, fragments, operation } = info;
+  const typeInfo = new TypeInfo(schema);
   typeInfo['_typeStack'].push(getNamedType(fieldDef.type));
 
-  // TODO: unify with graphql-faker
+  // TODO: cache to do only once per operation
+  const argToTypeMap = getOperationArgToTypeMap(schema, operation);
+
   return visit(clientSelection, visitWithTypeInfo(typeInfo, {
+    ...replaceVariablesVisitor(variableValues, argToTypeMap),
     [Kind.FIELD]: () => {
       const field = typeInfo.getFieldDef();
       if (field.name.startsWith('__'))
@@ -286,7 +288,7 @@ function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undef
         return null;
     },
     [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
-      const fragment = info.fragments[node.name.value];
+      const fragment = fragments[node.name.value];
       return {
         kind: Kind.INLINE_FRAGMENT,
         typeCondition: fragment.typeCondition,
@@ -297,6 +299,7 @@ function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undef
     [Kind.SELECTION_SET]: {
       leave(node: SelectionSetNode) {
         const type = typeInfo.getParentType()
+        // TODO: should we also handle Interfaces and Unions here?
         if (type instanceof GraphQLObjectType) {
           Object.values(type.getFields()).forEach(field => {
             const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
@@ -315,7 +318,6 @@ function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undef
           return node;
       }
     },
-    // FIXME: reuse variable replace code from in wrapSelection
   }));
 }
 
@@ -404,7 +406,7 @@ class ProxyOperation {
   operationType: OperationTypeNode;
   _resultPath: string[];
   _selectionSet: SelectionSetNode;
-  _argToType: { [ argName: string ]: GraphQLInputType };
+  _argToType: OperationArgToTypeMap;
 
   constructor(
     operationDef: OperationDefinitionNode,
@@ -416,10 +418,7 @@ class ProxyOperation {
     this._selectionSet = operationDef.selectionSet;
 
     const schema = schemaResolver(this.sendTo);
-    this._argToType = mapValues(
-      keyBy(operationDef.variableDefinitions, ({variable}) => variable.name.value),
-      node => typeFromAST(schema, node.type) as GraphQLInputType
-    );
+    this._argToType = getOperationArgToTypeMap(schema, operationDef);
 
     const resultPath = [];
     visit(operationDef, visitWithResultPath(resultPath, {
@@ -433,10 +432,7 @@ class ProxyOperation {
 
   wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
     return visit(this._selectionSet, {
-      [Kind.VARIABLE]: (node: VariableNode) => {
-        const argName = node.name.value;
-        return astFromValue(args[argName], this._argToType[argName]);
-      },
+      ...replaceVariablesVisitor(args, this._argToType),
       [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
         const selections = node.selections;
         if (selections[0] && selections[0].kind === Kind.FRAGMENT_SPREAD) {

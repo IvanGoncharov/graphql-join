@@ -45,4 +45,16 @@ describe('type system', () => {
     `);
   });
 
+  test('variables in client query', async () => {
+    await execute(`
+      query ($true: Boolean = true, $false: Boolean = false) {
+        foo @include(if: $true) {
+          bar @skip(if: $false) {
+            baz @include(if: $true)
+          }
+        }
+      }
+    `);
+  });
+
 });
