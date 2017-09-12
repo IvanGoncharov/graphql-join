@@ -231,11 +231,9 @@ async function fieldResolver(
   context: ProxyContext,
   info: GraphQLResolveInfo,
 ) {
-  // FIXME: fix typings in graphql-js
-  const isRoot = (info.path!.prev == null);
+  const isRoot = (info.path.prev == null);
   if (isRoot) {
-    // FIXME: fix typings in graphql-js
-    const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
+    const fieldDef = info.parentType.getFields()[info.fieldName];
     const clientSelection = makeClientSelection(info);
     const result = await context.proxyToRemote(
       // Root type always have only one origin type
@@ -247,8 +245,7 @@ async function fieldResolver(
   }
 
   // proxy value or Error instance injected by the proxy
-  // FIXME: fix typing for info.path
-  return rootValue && rootValue[info.path!.key];
+  return rootValue && rootValue[info.path.key];
 }
 
 function resolveWithResolver(
@@ -271,8 +268,7 @@ function resolveWithResolver(
 }
 
 function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undefined {
-  // FIXME: fix typings in graphql-js
-  const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
+  const fieldDef = info.parentType.getFields()[info.fieldName];
   // FIXME: handle array
   const clientSelection = info.fieldNodes[0].selectionSet;
   if (!clientSelection) return;
@@ -317,7 +313,9 @@ function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undef
 export class ProxyContext {
   constructor(
     private proxyFns: SchemaProxyFnMap
-  ) {}
+  ) {
+    //FIXME: validate proxyFns
+  }
 
   proxyToRemote(
     schemaName: string,
