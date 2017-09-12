@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import {
   keyBy,
+  flatten,
   mapValues,
   cloneDeep,
   set as pathSet
@@ -15,6 +16,7 @@ import {
   DocumentNode,
   VariableNode,
   NamedTypeNode,
+  SelectionNode,
   DefinitionNode,
   SelectionSetNode,
   TypeDefinitionNode,
@@ -305,18 +307,15 @@ export function injectErrors(result: ExecutionResult): object | void {
   return data;
 }
 
-export function injectTypename(node: SelectionSetNode) {
+export function injectTypename(node: SelectionSetNode): SelectionSetNode {
   // TODO: don't add duplicating __typename
-  return {
-    ...node,
-    selections: [
-      ...node.selections,
-      {
-        kind: Kind.FIELD,
-        name: nameNode('__typename'),
-      },
-    ],
-  };
+  return selectionSetNode([
+    ...node.selections,
+    {
+      kind: Kind.FIELD,
+      name: nameNode('__typename'),
+    },
+  ]);
 }
 
 function nameNode(name: string): NameNode {
@@ -326,27 +325,37 @@ function nameNode(name: string): NameNode {
   };
 }
 
+function selectionSetNode(selections: SelectionNode[]) {
+  return {
+    kind: Kind.SELECTION_SET,
+    selections,
+  };
+}
+
+export function mergeSelectionSets(sets: SelectionSetNode[]): SelectionSetNode {
+  return selectionSetNode(flatten(
+    sets.map(set => set.selections)
+  ));
+}
+
 export function fieldToSelectionSet(
   fieldDef: GraphQLField<any, any>,
   args: object,
   selectionSet?: SelectionSetNode
 ): SelectionSetNode {
-  return {
-    kind: Kind.SELECTION_SET,
-    selections: [{
-      kind: Kind.FIELD,
-      name: nameNode(fieldDef.name),
-      selectionSet,
-      arguments: Object.entries(args).map(([name,value]) => {
-        const argDef = fieldDef.args.find(arg => arg.name === name)!;
-        return {
-          kind: Kind.ARGUMENT,
-          name: nameNode(name),
-          value: astFromValue(argDef.type, value),
-        }
-      }),
-    }],
-  };
+  return selectionSetNode([{
+    kind: Kind.FIELD,
+    name: nameNode(fieldDef.name),
+    selectionSet,
+    arguments: Object.entries(args).map(([name,value]) => {
+      const argDef = fieldDef.args.find(arg => arg.name === name)!;
+      return {
+        kind: Kind.ARGUMENT,
+        name: nameNode(name),
+        value: astFromValue(argDef.type, value),
+      }
+    }),
+  }]);
 }
 
 export function visitWithResultPath(resultPath: string[], visitor) {

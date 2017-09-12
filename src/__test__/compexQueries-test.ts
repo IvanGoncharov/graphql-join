@@ -57,4 +57,19 @@ describe('type system', () => {
     `);
   });
 
+  test('duplicate fields in client query', async () => {
+    await execute(`
+      {
+        foo {
+          __typename
+        }
+        foo {
+          bar {
+            baz
+          }
+        }
+      }
+    `);
+  });
+
 });

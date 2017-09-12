@@ -14,6 +14,34 @@ type Query {
 }
 `;
 
+exports[`type system duplicate fields in client query 1`] = `
+{
+  foo {
+    __typename
+    bar {
+      baz
+    }
+  }
+}
+`;
+
+exports[`type system duplicate fields in client query 2`] = `
+[
+  "\\n      {\\n        foo {\\n          __typename\\n        }\\n        foo {\\n          bar {\\n            baz\\n          }\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "__typename": "Bar",
+        "bar": {
+          "baz": "test::Baz::baz"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
 exports[`type system field alias in client query 1`] = `
 {
   foo {
@@ -57,32 +85,6 @@ exports[`type system fragments in client query 1`] = `
 exports[`type system fragments in client query 2`] = `
 [
   "\\n      {\\n        ... FooFrag\\n      }\\n      fragment FooFrag on Query {\\n        foo {\\n          ... BarFrag\\n        }\\n      }\\n      fragment BarFrag on Bar {\\n        bar {\\n          ... BazFrag\\n        }\\n      }\\n      fragment BazFrag on Baz {\\n        baz\\n      }\\n    ",
-  {
-    "data": {
-      "foo": {
-        "bar": {
-          "baz": "test::Baz::baz"
-        }
-      }
-    },
-    "errors": []
-  }
-]
-`;
-
-exports[`type system fragments in client query 3`] = `
-{
-  foo {
-    bar @skip(if: false) {
-      baz @include(if: true)
-    }
-  }
-}
-`;
-
-exports[`type system fragments in client query 4`] = `
-[
-  "\\n      query ($true: Boolean = true, $false: Boolean = false) {\\n        foo @include(if: $true) {\\n          bar @skip(if: $false) {\\n            baz @include(if: $true)\\n          }\\n        }\\n      }\\n    ",
   {
     "data": {
       "foo": {

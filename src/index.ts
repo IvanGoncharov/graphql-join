@@ -36,7 +36,6 @@ import {
 
 import {
   keyBy,
-  flatten,
   mapValues,
 } from 'lodash';
 
@@ -68,6 +67,7 @@ import {
   OperationArgToTypeMap,
   getOperationArgToTypeMap,
   replaceVariablesVisitor,
+  mergeSelectionSets,
 } from './utils';
 
 // PROXY:
@@ -265,60 +265,68 @@ function resolveWithResolver(
   }
 }
 
-function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undefined {
-  const fieldDef = info.parentType.getFields()[info.fieldName];
-  // FIXME: handle array
-  const clientSelection = info.fieldNodes[0].selectionSet;
-  if (!clientSelection) return;
+function makeClientSelection(
+  info: GraphQLResolveInfo
+): SelectionSetNode | undefined {
+  const resultTypeNamed = getNamedType(info.returnType);
+  if (isLeafType(resultTypeNamed)) {
+    return;
+  }
 
-  const {schema, variableValues, fragments, operation } = info;
+  const {schema, variableValues, fragments, operation, fieldNodes} = info;
   const typeInfo = new TypeInfo(schema);
-  typeInfo['_typeStack'].push(getNamedType(fieldDef.type));
+  typeInfo['_typeStack'].push(resultTypeNamed);
 
   // TODO: cache to do only once per operation
   const argToTypeMap = getOperationArgToTypeMap(schema, operation);
 
-  return visit(clientSelection, visitWithTypeInfo(typeInfo, {
-    ...replaceVariablesVisitor(variableValues, argToTypeMap),
-    [Kind.FIELD]: () => {
-      const field = typeInfo.getFieldDef();
-      if (field.name.startsWith('__'))
-        return null;
-      if (field['resolveWith'])
-        return null;
-    },
-    [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
-      const fragment = fragments[node.name.value];
-      return {
-        kind: Kind.INLINE_FRAGMENT,
-        typeCondition: fragment.typeCondition,
-        selectionSet: fragment.selectionSet,
-        directives: node.directives,
-      }
-    },
-    [Kind.SELECTION_SET]: {
-      leave(node: SelectionSetNode) {
-        const type = typeInfo.getParentType()
-        // TODO: should we also handle Interfaces and Unions here?
-        if (type instanceof GraphQLObjectType) {
-          Object.values(type.getFields()).forEach(field => {
-            const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
-            if (!resolveWith) return;
+  return mergeSelectionSets(
+    fieldNodes.map(({selectionSet}) => cleanupSelectionSet(selectionSet!))
+  );
 
-            const {argumentsFragment} = resolveWith;
-            if (argumentsFragment) {
-              node = argumentsFragment.injectIntoSelectionSet(node);
-            }
-          });
+  function cleanupSelectionSet(selectionSet: SelectionSetNode) {
+    return visit(selectionSet, visitWithTypeInfo(typeInfo, {
+      ...replaceVariablesVisitor(variableValues, argToTypeMap),
+      [Kind.FIELD]: () => {
+        const field = typeInfo.getFieldDef();
+        if (field.name.startsWith('__'))
+          return null;
+        if (field['resolveWith'])
+          return null;
+      },
+      [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
+        const fragment = fragments[node.name.value];
+        return {
+          kind: Kind.INLINE_FRAGMENT,
+          typeCondition: fragment.typeCondition,
+          selectionSet: fragment.selectionSet,
+          directives: node.directives,
         }
+      },
+      [Kind.SELECTION_SET]: {
+        leave(node: SelectionSetNode) {
+          const type = typeInfo.getParentType()
+          // TODO: should we also handle Interfaces and Unions here?
+          if (type instanceof GraphQLObjectType) {
+            Object.values(type.getFields()).forEach(field => {
+              const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
+              if (!resolveWith) return;
 
-        if (isAbstractType(type) || node.selections.length === 0)
-          return injectTypename(node);
-        else
-          return node;
-      }
-    },
-  }));
+              const {argumentsFragment} = resolveWith;
+              if (argumentsFragment) {
+                node = argumentsFragment.injectIntoSelectionSet(node);
+              }
+            });
+          }
+
+          if (isAbstractType(type) || node.selections.length === 0)
+            return injectTypename(node);
+          else
+            return node;
+        }
+      },
+    }));
+  }
 }
 
 export class ProxyContext {
@@ -399,7 +407,8 @@ class ArgumentsFragment {
   }
 }
 
-// TODO: don't forget to stip type prefixes from user selection parts and fragments before proxing
+// FIXME: strip type prefixes from user selection parts and fragments before proxing
+// FIXME: strip type prefixes from __typename inside results
 class ProxyOperation {
   name?: string;
   sendTo: string;
