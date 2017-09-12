@@ -398,4 +398,3 @@ export function extractByPath(obj: any, path: string[]) {
   }
   return result;
 }
-

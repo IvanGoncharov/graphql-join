@@ -24,4 +24,25 @@ describe('type system', () => {
     `);
   });
 
+  test('fragments in client query', async () => {
+    await execute(`
+      {
+        ... FooFrag
+      }
+      fragment FooFrag on Query {
+        foo {
+          ... BarFrag
+        }
+      }
+      fragment BarFrag on Bar {
+        bar {
+          ... BazFrag
+        }
+      }
+      fragment BazFrag on Baz {
+        baz
+      }
+    `);
+  });
+
 });

@@ -39,3 +39,33 @@ exports[`type system field alias in client query 2`] = `
   }
 ]
 `;
+
+exports[`type system fragments in client query 1`] = `
+{
+  foo {
+    ... on Bar {
+      bar {
+        ... on Baz {
+          baz
+        }
+      }
+    }
+  }
+}
+`;
+
+exports[`type system fragments in client query 2`] = `
+[
+  "\\n      {\\n        ... FooFrag\\n      }\\n      fragment FooFrag on Query {\\n        foo {\\n          ... BarFrag\\n        }\\n      }\\n      fragment BarFrag on Bar {\\n        bar {\\n          ... BazFrag\\n        }\\n      }\\n      fragment BazFrag on Baz {\\n        baz\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "bar": {
+          "baz": "test::Baz::baz"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;

@@ -9,6 +9,7 @@ import {
   SelectionSetNode,
   OperationTypeNode,
   TypeDefinitionNode,
+  FragmentSpreadNode,
   FragmentDefinitionNode,
   OperationDefinitionNode,
 
@@ -284,6 +285,15 @@ function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undef
       if (field['resolveWith'])
         return null;
     },
+    [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
+      const fragment = info.fragments[node.name.value];
+      return {
+        kind: Kind.INLINE_FRAGMENT,
+        typeCondition: fragment.typeCondition,
+        selectionSet: fragment.selectionSet,
+        directives: node.directives,
+      }
+    },
     [Kind.SELECTION_SET]: {
       leave(node: SelectionSetNode) {
         const type = typeInfo.getParentType()
@@ -387,7 +397,6 @@ class ArgumentsFragment {
   }
 }
 
-// TODO: call proxy know about fragments from orinal query
 // TODO: don't forget to stip type prefixes from user selection parts and fragments before proxing
 class ProxyOperation {
   name?: string;
