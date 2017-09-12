@@ -108,18 +108,12 @@ exports[`grafting tests recursive Query type 3`] = `
 exports[`grafting tests recursive Query type 4`] = `
 {
   query {
-    __typename
+    foo
   }
 }
 `;
 
 exports[`grafting tests recursive Query type 5`] = `
-{
-  foo
-}
-`;
-
-exports[`grafting tests recursive Query type 6`] = `
 [
   "{ query { foo } }",
   {

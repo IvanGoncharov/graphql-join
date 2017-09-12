@@ -2,6 +2,7 @@ import { GraphQLClient } from 'graphql-request';
 import {
   Kind,
   ASTNode,
+  NameNode,
   FieldNode,
   DocumentNode,
   VariableNode,
@@ -65,14 +66,18 @@ import {
   getExternalTypeNames,
   getTypesWithDependencies,
   buildSchemaFromSDL,
+  fieldToSelectionSet,
 } from './utils';
 
 // PROXY:
+// timeout
 // ratelimiting for proxy queries
 // proxy Relay node, ID => ${schemaName}/ID
 // GLOBAL TODO:
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
+
+// FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
 
 export type SchemaProxyFn = (query: DocumentNode) => Promise<ExecutionResult>;
 export type SchemaProxyFnMap = { [schemaName: string]: SchemaProxyFn };
@@ -144,7 +149,8 @@ function buildJoinSchema(
   });
 
   for (const { ast, originTypes } of remoteTypes) {
-    schema.getType(ast.name.value)['originTypes'] = originTypes;
+    const typeName = ast.name.value;
+    schema.getType(typeName)['originTypes'] = originTypes;
   }
   return schema;
 }
@@ -190,7 +196,10 @@ export function joinSchemas(
   const schema = buildJoinSchema(joinDefs, remoteSchemas);
 
   const operations = keyBy(
-    joinDefs.operations.map(op => new ProxyOperation(op, remoteSchemaResolver)),
+    joinDefs.operations.map(op => new ProxyOperation(
+      op,
+      name => remoteSchemas[name].schema,
+    )),
     op => op.name
   );
   const fragments = keyBy(
@@ -199,128 +208,56 @@ export function joinSchemas(
   );
 
   stubSchema(schema, (type, field) => {
-    field['resolveWith'] = getResolveWithArgs(type, field);
     field.resolve = fieldResolver;
-  });
-  return schema;
 
-  function getResolveWithArgs(
-    type: GraphQLNamedType,
-    field: GraphQLField<any,any>
-  ): ResolveWithArgs | undefined {
-    let args = getResolveWithDirective(field.astNode);
+    const args = getResolveWithDirective(field.astNode);
     if (args) {
-      return {
+      field['resolveWith'] = {
         query: operations[args.query],
         argumentsFragment: args.argumentsFragment ?
           fragments[args.argumentsFragment]: undefined,
       };
     }
-
-    const operationType = getOperationType(type);
-    if (operationType) {
-      // Root type always have only one origin type
-      const { originAPI } = (type['originTypes'] as OriginTypes)[0];
-      return {
-        query: operationForRootField(operationType, originAPI, field),
-      };
-    }
-    return undefined;
-  }
-
-  function getOperationType(
-    type: GraphQLNamedType
-  ): OperationTypeNode | undefined {
-    if (type === schema.getQueryType()) {
-      return 'query';
-    } else if (type === schema.getMutationType()) {
-      return 'mutation';
-    }
-  }
-
-  function operationForRootField(
-    operationType: OperationTypeNode,
-    sendTo: string,
-    field: GraphQLField<any, any>
-  ): ProxyOperation {
-    const isLeaf = isLeafType(getNamedType(field.type));
-    const ast = parse(
-      `${operationType} @send(to: "${sendTo}") {
-         ${field.name}${ isLeaf ? '' : ' { ...CLIENT_SELECTION }' }
-      }`,
-      { noLocation: true }
-    );
-    const operation = ast.definitions[0] as OperationDefinitionNode;
-    return new ProxyOperation(operation, remoteSchemaResolver);
-  }
-
-  function remoteSchemaResolver(api: string): GraphQLSchema {
-    return remoteSchemas[api].schema;
-  }
+  });
+  return schema;
 }
 
 async function fieldResolver(
-    rootValue: object,
-    args: object,
-    context: ProxyContext,
-    info: GraphQLResolveInfo
+  rootValue: object,
+  args: object,
+  context: ProxyContext,
+  info: GraphQLResolveInfo,
 ) {
   // FIXME: fix typings in graphql-js
   const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
   const resolveWithArgs = fieldDef['resolveWith'] as ResolveWithArgs;
-  if (!resolveWithArgs) {
+  // FIXME: fix typings in graphql-js
+  const isRoot = (info.path!.prev == null);
+
+  if (!isRoot && !resolveWithArgs) {
     // proxy value or Error instance injected by the proxy
     // FIXME: fix typing for info.path
     return rootValue && rootValue[info.path!.key];
   }
 
-  // FIXME: handle array
-  let rawClientSelection = info.fieldNodes[0].selectionSet;
-  const schema = info.schema;
-  const typeInfo = new TypeInfo(info.schema);
-  typeInfo['_typeStack'].push(fieldDef.type);
+  const clientSelection = makeClientSelection(info);
 
-  let clientSelection;
-  if (rawClientSelection) {
-    // TODO: unify with graphql-faker
-    clientSelection = visit(rawClientSelection, visitWithTypeInfo(typeInfo, {
-      [Kind.FIELD]: () => {
-        const field = typeInfo.getFieldDef();
-        if (field.name.startsWith('__'))
-          return null;
-        if (field['resolveWith'])
-          return null;
-      },
-      [Kind.SELECTION_SET]: {
-        leave(node: SelectionSetNode) {
-          const type = typeInfo.getParentType()
-          if (type instanceof GraphQLObjectType) {
-            Object.values(type.getFields()).forEach(field => {
-              const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
-              if (!resolveWith) return;
-
-              const {argumentsFragment} = resolveWith;
-              if (argumentsFragment) {
-                node = argumentsFragment.injectIntoSelectionSet(node);
-              }
-            });
-          }
-
-          if (isAbstractType(type) || node.selections.length === 0)
-            return injectTypename(node);
-          else
-            return node;
-        }
-      },
-      // FIXME: reuse variable replace code from in wrapSelection
-    }));
+  if (isRoot && !resolveWithArgs) {
+    const result = await context.proxyToRemote(
+      // Root type always have only one origin type
+      info.parentType['originTypes'][0].originAPI,
+      info.operation.operation,
+      fieldToSelectionSet(fieldDef, args, clientSelection),
+    );
+    return extractByPath(injectErrors(result), [fieldDef.name]);
   }
 
-  const {query, argumentsFragment} = resolveWithArgs;
+  const { query, argumentsFragment } = resolveWithArgs;
   const queryArgs = {
     ...args,
     ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
   };
+
   const result = await context.proxyToRemote(
     query.sendTo,
     query.operationType,
@@ -329,7 +266,48 @@ async function fieldResolver(
   return query.makeRootValue(result);
 }
 
-function resolveWith(resolveWithArgs: ResolveWithArgs) {
+function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undefined {
+  // FIXME: fix typings in graphql-js
+  const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
+  // FIXME: handle array
+  const clientSelection = info.fieldNodes[0].selectionSet;
+  if (!clientSelection) return;
+
+  const typeInfo = new TypeInfo(info.schema);
+  typeInfo['_typeStack'].push(getNamedType(fieldDef.type));
+
+  // TODO: unify with graphql-faker
+  return visit(clientSelection, visitWithTypeInfo(typeInfo, {
+    [Kind.FIELD]: () => {
+      const field = typeInfo.getFieldDef();
+      if (field.name.startsWith('__'))
+        return null;
+      if (field['resolveWith'])
+        return null;
+    },
+    [Kind.SELECTION_SET]: {
+      leave(node: SelectionSetNode) {
+        const type = typeInfo.getParentType()
+        if (type instanceof GraphQLObjectType) {
+          Object.values(type.getFields()).forEach(field => {
+            const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
+            if (!resolveWith) return;
+
+            const {argumentsFragment} = resolveWith;
+            if (argumentsFragment) {
+              node = argumentsFragment.injectIntoSelectionSet(node);
+            }
+          });
+        }
+
+        if (isAbstractType(type) || node.selections.length === 0)
+          return injectTypename(node);
+        else
+          return node;
+      }
+    },
+    // FIXME: reuse variable replace code from in wrapSelection
+  }));
 }
 
 export class ProxyContext {
@@ -447,7 +425,6 @@ class ProxyOperation {
     return visit(this._selectionSet, {
       [Kind.VARIABLE]: (node: VariableNode) => {
         const argName = node.name.value;
-        // FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
         return astFromValue(args[argName], this._argToType[argName]);
       },
       [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
@@ -461,11 +438,11 @@ class ProxyOperation {
 
   makeRootValue(result: ExecutionResult): any {
     const data = injectErrors(result);
-    return data && extractByPath(data, this._resultPath);
+    return extractByPath(data, this._resultPath);
   }
 }
 
-function extractByPath(obj: object, path: string[]) {
+function extractByPath(obj: any, path: string[]) {
   let result = obj;
   for (const prop of path) {
     if (result == null || result instanceof Error) {

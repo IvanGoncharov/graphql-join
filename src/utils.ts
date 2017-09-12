@@ -31,6 +31,7 @@ import {
   parse,
   visit,
   printSchema,
+  astFromValue,
   isAbstractType,
   extendSchema,
   buildASTSchema,
@@ -301,11 +302,38 @@ export function injectTypename(node: SelectionSetNode) {
       ...node.selections,
       {
         kind: Kind.FIELD,
-        name: {
-          kind: Kind.NAME,
-          value: '__typename',
-        },
+        name: nameNode('__typename'),
       },
     ],
+  };
+}
+
+function nameNode(name: string): NameNode {
+  return {
+    kind: Kind.NAME,
+    value: name,
+  };
+}
+
+export function fieldToSelectionSet(
+  fieldDef: GraphQLField<any, any>,
+  args: object,
+  selectionSet?: SelectionSetNode
+): SelectionSetNode {
+  return {
+    kind: Kind.SELECTION_SET,
+    selections: [{
+      kind: Kind.FIELD,
+      name: nameNode(fieldDef.name),
+      selectionSet,
+      arguments: Object.entries(args).map(([name,value]) => {
+        const argDef = fieldDef.args.find(arg => arg.name === name)!;
+        return {
+          kind: Kind.ARGUMENT,
+          name: nameNode(name),
+          value: astFromValue(argDef.type, value),
+        }
+      }),
+    }],
   };
 }
