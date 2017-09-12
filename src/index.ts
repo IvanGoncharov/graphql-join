@@ -21,6 +21,7 @@ import {
   GraphQLObjectType,
   GraphQLResolveInfo,
   GraphQLField,
+  GraphQLFieldResolver,
   IntrospectionQuery,
 
   isLeafType,
@@ -208,15 +209,17 @@ export function joinSchemas(
   );
 
   stubSchema(schema, (type, field) => {
-    field.resolve = fieldResolver;
-
-    const args = getResolveWithDirective(field.astNode);
-    if (args) {
-      field['resolveWith'] = {
-        query: operations[args.query],
-        argumentsFragment: args.argumentsFragment ?
-          fragments[args.argumentsFragment]: undefined,
+    const rawArgs = getResolveWithDirective(field.astNode);
+    if (rawArgs) {
+      const args = {
+        query: operations[rawArgs.query],
+        argumentsFragment: rawArgs.argumentsFragment ?
+          fragments[rawArgs.argumentsFragment] : undefined,
       };
+      field['resolveWith'] = args;
+      field.resolve = resolveWithResolver(args);
+    } else {
+      field.resolve = fieldResolver;
     }
   });
   return schema;
@@ -229,20 +232,11 @@ async function fieldResolver(
   info: GraphQLResolveInfo,
 ) {
   // FIXME: fix typings in graphql-js
-  const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
-  const resolveWithArgs = fieldDef['resolveWith'] as ResolveWithArgs;
-  // FIXME: fix typings in graphql-js
   const isRoot = (info.path!.prev == null);
-
-  if (!isRoot && !resolveWithArgs) {
-    // proxy value or Error instance injected by the proxy
-    // FIXME: fix typing for info.path
-    return rootValue && rootValue[info.path!.key];
-  }
-
-  const clientSelection = makeClientSelection(info);
-
-  if (isRoot && !resolveWithArgs) {
+  if (isRoot) {
+    // FIXME: fix typings in graphql-js
+    const fieldDef = (info.parentType as GraphQLObjectType).getFields()[info.fieldName];
+    const clientSelection = makeClientSelection(info);
     const result = await context.proxyToRemote(
       // Root type always have only one origin type
       info.parentType['originTypes'][0].originAPI,
@@ -252,18 +246,28 @@ async function fieldResolver(
     return extractByPath(injectErrors(result), [fieldDef.name]);
   }
 
-  const { query, argumentsFragment } = resolveWithArgs;
-  const queryArgs = {
-    ...args,
-    ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
-  };
+  // proxy value or Error instance injected by the proxy
+  // FIXME: fix typing for info.path
+  return rootValue && rootValue[info.path!.key];
+}
 
-  const result = await context.proxyToRemote(
-    query.sendTo,
-    query.operationType,
-    query.wrapSelection(queryArgs, clientSelection),
-  );
-  return query.makeRootValue(result);
+function resolveWithResolver(
+  {query, argumentsFragment}: ResolveWithArgs
+): GraphQLFieldResolver<any, any> {
+  return async (rootValue, args, context: ProxyContext, info) => {
+    const clientSelection = makeClientSelection(info);
+    const queryArgs = {
+      ...args,
+      ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
+    };
+
+    const result = await context.proxyToRemote(
+      query.sendTo,
+      query.operationType,
+      query.wrapSelection(queryArgs, clientSelection),
+    );
+    return query.makeRootValue(result);
+  }
 }
 
 function makeClientSelection(info: GraphQLResolveInfo): SelectionSetNode | undefined {
