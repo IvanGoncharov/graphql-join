@@ -1,0 +1,41 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[` 1`] = `
+type Bar {
+  bar: Baz
+}
+
+type Baz {
+  baz: String
+}
+
+type Query {
+  foo: Bar
+}
+`;
+
+exports[`type system field alias in client query 1`] = `
+{
+  foo {
+    barAlias: bar {
+      bazAlias: baz
+    }
+  }
+}
+`;
+
+exports[`type system field alias in client query 2`] = `
+[
+  "\\n      {\\n        fooAlias: foo {\\n          barAlias: bar {\\n            bazAlias: baz\\n          }\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "fooAlias": {
+        "barAlias": {
+          "bazAlias": "test::Baz::baz"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;
