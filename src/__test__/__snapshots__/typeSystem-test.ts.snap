@@ -1,0 +1,53 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`type system arrays in response type 1`] = `
+type Query {
+  foo: [[String]]
+}
+`;
+
+exports[`type system arrays in response type 2`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c"
+        ]
+      ]
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`type system arrays of objects with arrays in response type 1`] = `
+type Query {
+  foo: [[String]]
+}
+`;
+
+exports[`type system arrays of objects with arrays in response type 2`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c"
+        ]
+      ]
+    },
+    "errors": []
+  }
+]
+`;

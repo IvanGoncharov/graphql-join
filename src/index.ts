@@ -66,6 +66,7 @@ import {
   buildSchemaFromSDL,
   fieldToSelectionSet,
   visitWithResultPath,
+  extractByPath,
 } from './utils';
 
 // PROXY:
@@ -442,19 +443,6 @@ class ProxyOperation {
   }
 }
 
-function extractByPath(obj: any, path: string[]) {
-  let result = obj;
-  for (const prop of path) {
-    if (result == null || result instanceof Error) {
-      return result;
-    }
-
-    // FIXME: handle arrays
-    result = result[prop];
-  }
-  return result;
-}
-
 function validation() {
   // TODO:
   // JOIN AST:
@@ -462,9 +450,10 @@ function validation() {
   //   - validate that all directive known and locations are correct
   //   - no specified directives inside join AST
   //   - all references to remote types have no conficts
-  //   - references to Query and Mutation roots point to exactly one type
+  //   - references to Query and Mutation roots point to exactly one remote type
   //   - all fields inside extends and type defs should have @resolveWith
   //   - all field args + all fragment exports used in operation
+  //   - fields return types should match types returned by "query" including LIST and NON_NULL
   // fragments:
   //   - shoud have uniq names
   //   - shouldn't reference other fragments

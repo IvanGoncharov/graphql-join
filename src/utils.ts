@@ -364,7 +364,9 @@ export function visitWithResultPath(resultPath: string[], visitor) {
         result = fn.apply(visitor, arguments);
       }
 
-      resultPath.pop();
+      if (node.kind === Kind.FIELD) {
+        resultPath.pop();
+      }
       return result;
     }
   };
@@ -379,3 +381,21 @@ export function visitWithResultPath(resultPath: string[], visitor) {
     return maybeNode && typeof maybeNode.kind === 'string';
   }
 }
+
+export function extractByPath(obj: any, path: string[]) {
+  let result = obj;
+  for (let i = 0; i < path.length; ++i) {
+    if (result == null || result instanceof Error) {
+      return result;
+    } else if (Array.isArray(result)) {
+      const subpath = path.slice(i);
+      return result.map(
+        item => extractByPath(item, subpath)
+      );
+    } else {
+      result = result[path[i]];
+    }
+  }
+  return result;
+}
+
