@@ -7,14 +7,18 @@ import {
   GraphQLSchema,
   GraphQLFieldResolver,
   GraphQLResolveInfo,
+  ExecutionArgs,
   ExecutionResult,
 
   graphql,
   parse,
+  validate,
+  execute,
   print,
   buildSchema,
   printSchema,
   formatError,
+  specifiedRules,
 } from 'graphql';
 import * as _ from 'lodash';
 
@@ -45,21 +49,27 @@ function makeProxy(schemaName: string, schema: GraphQLSchema) {
   return (queryAST: DocumentNode) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
+    // FIXME: Should use executeQuery but blocked by
+    // https://github.com/facebook/jest/issues/3917
     return graphql({
       schema,
-      source: query,
+      source: new Source(query, 'Send to ' + schemaName),
       fieldResolver: fakeFieldResolver(schemaName),
     });
   };
 }
 
-type TestSchema = string;
+type TestSchema = string | { sdl: string, prefix?: string };
 type TestSchemasMap = { [name: string]: TestSchema };
 export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
-  const remoteSchemas = _.mapValues(testSchemas, (sdl, name) => {
+  const remoteSchemas = _.mapValues(testSchemas, (schemaSource, name) => {
+    if (typeof schemaSource === 'string') {
+      schemaSource = { sdl: schemaSource };
+    }
+    const { prefix, sdl } = schemaSource;
     const schema = buildSchema(new Source(sdl, name));
     stubSchema(schema);
-    return { schema };
+    return { schema , prefix};
   });
 
   const joinAST = parse(new Source(joinSDL, 'Join SDL'));
@@ -78,16 +88,23 @@ export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
       return makeProxy(name, schema)
     });
 
-    const result = await graphql({
+    const result = await executeQuery({
       schema,
-      source: new Source(query, 'ClientQuery'),
+      document: parse(new Source(query, 'ClientQuery')),
       contextValue: new ProxyContext(proxyFns),
     });
+
     expect([
       query,
       resultToJSON(result),
     ]).toMatchSnapshot();
   };
+}
+
+function executeQuery(args: ExecutionArgs) {
+  const validationErrors = validate(args.schema, args.document, specifiedRules);
+  expect(validationErrors.join('\n')).toBe('');
+  return execute(args);
 }
 
 function resultToJSON(result) {
