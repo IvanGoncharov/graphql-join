@@ -42,7 +42,6 @@ import {
   visit,
   printSchema,
   typeFromAST,
-  // FIXME: astFromValue is incomplete and wouldn't hadle array and object as scalar
   astFromValue,
   isAbstractType,
   extendSchema,
@@ -422,14 +421,20 @@ export function extractByPath(obj: any, path: string[]) {
   return result;
 }
 
+export function keyByNameNodes<T extends { name?: NameNode }>(
+  nodes: T[]
+): { [name: string]: T } {
+  return keyBy(nodes, node => node.name!.value);
+}
+
 export type OperationArgToTypeMap = { [ argName: string ]: GraphQLInputType };
 
 export function getOperationArgToTypeMap(
   schema: GraphQLSchema,
-  operationDef: OperationDefinitionNode
+  {variableDefinitions}: OperationDefinitionNode
 ): OperationArgToTypeMap {
   return mapValues(
-    keyBy(operationDef.variableDefinitions, ({variable}) => variable.name.value),
+    keyBy(variableDefinitions, ({variable}) => variable.name.value),
     node => typeFromAST(schema, node.type) as GraphQLInputType
   );
 }
@@ -441,6 +446,7 @@ export function replaceVariablesVisitor(
   return {
     [Kind.VARIABLE]: (node: VariableNode) => {
       const argName = node.name.value;
+      // FIXME: astFromValue wouldn't hadle array and object as scalar
       return astFromValue(args[argName], argTypes[argName]);
     },
   }

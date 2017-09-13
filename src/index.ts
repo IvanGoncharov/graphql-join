@@ -34,7 +34,6 @@ import {
 } from 'graphql';
 
 import {
-  keyBy,
   mapValues,
 } from 'lodash';
 
@@ -49,6 +48,7 @@ import {
 import {
   SplittedAST,
 
+  keyByNameNodes,
   stubSchema,
   splitAST,
   injectErrors,
@@ -159,7 +159,7 @@ function getRemoteTypes(
 ) {
   const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
   for (const [api, {schema, prefix = ''}] of Object.entries(remoteSchemas)) {
-    const typesMap = keyBy(schemaToASTTypes(schema), 'name.value');
+    const typesMap = keyByNameNodes(schemaToASTTypes(schema));
 
     const typesToExtract = extTypeRefs
       .filter(name => name.startsWith(prefix))
@@ -193,16 +193,13 @@ export function joinSchemas(
   const joinDefs = splitAST(joinAST);
   const schema = buildJoinSchema(joinDefs, remoteSchemas);
 
-  const operations = keyBy(
-    joinDefs.operations.map(op => new ProxyOperation(
-      op,
-      name => remoteSchemas[name].schema,
-    )),
-    op => op.name
+  const operations = mapValues(
+    keyByNameNodes(joinDefs.operations),
+    op => new ProxyOperation(op, remoteSchemas)
   );
-  const fragments = keyBy(
-    joinDefs.fragments.map(f => new ArgumentsFragment(f)),
-    f => f.name
+  const fragments = mapValues(
+    keyByNameNodes(joinDefs.fragments),
+    f => new ArgumentsFragment(f),
   );
 
   stubSchema(schema, (type, field) => {
@@ -254,13 +251,7 @@ function resolveWithResolver(
       ...args,
       ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
     };
-
-    const result = await context.proxyToRemote(
-      query.sendTo,
-      query.operationType,
-      query.wrapSelection(queryArgs, clientSelection),
-    );
-    return query.makeRootValue(result);
+    return query.call(context, queryArgs, clientSelection);
   }
 }
 
@@ -343,14 +334,12 @@ export class ProxyContext {
 }
 
 class ArgumentsFragment {
-  name: string;
   _selectionSet: SelectionSetNode;
   _exportPaths: { [name: string]: string[] };
   _typeCondition: NamedTypeNode;
 
   constructor(fragment: FragmentDefinitionNode) {
     const { name, typeCondition, selectionSet } = fragment;
-    this.name = name.value;
     this._typeCondition = typeCondition;
 
     this._exportPaths = {};
@@ -401,23 +390,21 @@ class ArgumentsFragment {
 // FIXME: strip type prefixes from user selection parts and fragments before proxing
 // FIXME: strip type prefixes from __typename inside results
 class ProxyOperation {
-  name?: string;
-  sendTo: string;
-  operationType: OperationTypeNode;
+  _sendTo: string;
+  _operationType: OperationTypeNode;
   _resultPath: string[];
   _selectionSet: SelectionSetNode;
   _argToType: OperationArgToTypeMap;
 
   constructor(
     operationDef: OperationDefinitionNode,
-    schemaResolver: (api: string) => GraphQLSchema
+    remoteSchemas: RemoteSchemasMap
   ) {
-    this.operationType = operationDef.operation;
-    this.sendTo = getSendDirective(operationDef)!.to;
-    this.name = operationDef.name && operationDef.name.value;
+    this._operationType = operationDef.operation;
+    this._sendTo = getSendDirective(operationDef)!.to;
     this._selectionSet = operationDef.selectionSet;
 
-    const schema = schemaResolver(this.sendTo);
+    const schema = remoteSchemas[this._sendTo].schema;
     this._argToType = getOperationArgToTypeMap(schema, operationDef);
 
     const resultPath = [];
@@ -430,7 +417,22 @@ class ProxyOperation {
     }));
   }
 
-  wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
+  async call(
+    context: ProxyContext,
+    queryArgs: object,
+    clientSelection?: SelectionSetNode
+  ): Promise<any> {
+    const result = await context.proxyToRemote(
+      this._sendTo,
+      this._operationType,
+      this._wrapSelection(queryArgs, clientSelection),
+    );
+
+    const data = injectErrors(result);
+    return extractByPath(data, this._resultPath);
+  }
+
+  _wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
     return visit(this._selectionSet, {
       ...replaceVariablesVisitor(args, this._argToType),
       [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
@@ -440,11 +442,6 @@ class ProxyOperation {
         }
       },
     });
-  }
-
-  makeRootValue(result: ExecutionResult): any {
-    const data = injectErrors(result);
-    return extractByPath(data, this._resultPath);
   }
 }
 
