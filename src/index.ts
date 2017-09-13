@@ -21,7 +21,6 @@ import {
   GraphQLFieldResolver,
   IntrospectionQuery,
 
-  isLeafType,
   isAbstractType,
   getNamedType,
 
@@ -268,65 +267,57 @@ function resolveWithResolver(
 function makeClientSelection(
   info: GraphQLResolveInfo
 ): SelectionSetNode | undefined {
-  const resultTypeNamed = getNamedType(info.returnType);
-  if (isLeafType(resultTypeNamed)) {
-    return;
-  }
+  const clientSelection = mergeSelectionSets(info.fieldNodes);
+  if (!clientSelection) return;
 
-  const {schema, variableValues, fragments, operation, fieldNodes} = info;
+  const {schema, variableValues, fragments, operation} = info;
   const typeInfo = new TypeInfo(schema);
-  typeInfo['_typeStack'].push(resultTypeNamed);
+  typeInfo['_typeStack'].push(getNamedType(info.returnType));
 
   // TODO: cache to do only once per operation
   const argToTypeMap = getOperationArgToTypeMap(schema, operation);
 
-  return mergeSelectionSets(
-    fieldNodes.map(({selectionSet}) => cleanupSelectionSet(selectionSet!))
-  );
+  return visit(clientSelection, visitWithTypeInfo(typeInfo, {
+    ...replaceVariablesVisitor(variableValues, argToTypeMap),
+    [Kind.FIELD]: () => {
+      const field = typeInfo.getFieldDef();
+      if (field.name.startsWith('__'))
+        return null;
+      if (field['resolveWith'])
+        return null;
+    },
+    [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
+      const fragment = fragments[node.name.value];
+      return {
+        kind: Kind.INLINE_FRAGMENT,
+        typeCondition: fragment.typeCondition,
+        selectionSet: fragment.selectionSet,
+        directives: node.directives,
+      }
+    },
+    [Kind.SELECTION_SET]: {
+      leave(node: SelectionSetNode) {
+        const type = typeInfo.getParentType()
+        // TODO: should we also handle Interfaces and Unions here?
+        if (type instanceof GraphQLObjectType) {
+          Object.values(type.getFields()).forEach(field => {
+            const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
+            if (!resolveWith) return;
 
-  function cleanupSelectionSet(selectionSet: SelectionSetNode) {
-    return visit(selectionSet, visitWithTypeInfo(typeInfo, {
-      ...replaceVariablesVisitor(variableValues, argToTypeMap),
-      [Kind.FIELD]: () => {
-        const field = typeInfo.getFieldDef();
-        if (field.name.startsWith('__'))
-          return null;
-        if (field['resolveWith'])
-          return null;
-      },
-      [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
-        const fragment = fragments[node.name.value];
-        return {
-          kind: Kind.INLINE_FRAGMENT,
-          typeCondition: fragment.typeCondition,
-          selectionSet: fragment.selectionSet,
-          directives: node.directives,
+            const {argumentsFragment} = resolveWith;
+            if (argumentsFragment) {
+              node = argumentsFragment.injectIntoSelectionSet(node);
+            }
+          });
         }
-      },
-      [Kind.SELECTION_SET]: {
-        leave(node: SelectionSetNode) {
-          const type = typeInfo.getParentType()
-          // TODO: should we also handle Interfaces and Unions here?
-          if (type instanceof GraphQLObjectType) {
-            Object.values(type.getFields()).forEach(field => {
-              const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
-              if (!resolveWith) return;
 
-              const {argumentsFragment} = resolveWith;
-              if (argumentsFragment) {
-                node = argumentsFragment.injectIntoSelectionSet(node);
-              }
-            });
-          }
-
-          if (isAbstractType(type) || node.selections.length === 0)
-            return injectTypename(node);
-          else
-            return node;
-        }
-      },
-    }));
-  }
+        if (isAbstractType(type) || node.selections.length === 0)
+          return injectTypename(node);
+        else
+          return node;
+      }
+    },
+  }));
 }
 
 export class ProxyContext {

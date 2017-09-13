@@ -332,10 +332,15 @@ function selectionSetNode(selections: SelectionNode[]) {
   };
 }
 
-export function mergeSelectionSets(sets: SelectionSetNode[]): SelectionSetNode {
-  return selectionSetNode(flatten(
-    sets.map(set => set.selections)
-  ));
+export function mergeSelectionSets(
+  nodes: {selectionSet?: SelectionSetNode}[]
+): SelectionSetNode | undefined {
+  const sets = flatten(nodes
+    .filter(node => node.selectionSet)
+    .map(node => node.selectionSet!.selections)
+  );
+
+  return sets.length > 0 ? selectionSetNode(sets): undefined;
 }
 
 export function fieldToSelectionSet(

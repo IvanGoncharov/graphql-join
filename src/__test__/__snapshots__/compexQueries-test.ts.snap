@@ -17,7 +17,6 @@ type Query {
 exports[`type system duplicate fields in client query 1`] = `
 {
   foo {
-    __typename
     bar {
       baz
     }
