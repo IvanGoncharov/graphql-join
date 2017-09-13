@@ -59,7 +59,6 @@ import {
   getExternalTypeNames,
   getTypesWithDependencies,
   buildSchemaFromSDL,
-  fieldToSelectionSet,
   visitWithResultPath,
   extractByPath,
 
@@ -67,6 +66,7 @@ import {
   getOperationArgToTypeMap,
   replaceVariablesVisitor,
   mergeSelectionSets,
+  selectionSetNode,
 } from './utils';
 
 // PROXY:
@@ -227,15 +227,22 @@ async function fieldResolver(
 ) {
   const isRoot = (info.path.prev == null);
   if (isRoot) {
-    const fieldDef = info.parentType.getFields()[info.fieldName];
-    const clientSelection = makeClientSelection(info);
     const result = await context.proxyToRemote(
       // Root type always have only one origin type
       info.parentType['originTypes'][0].originAPI,
       info.operation.operation,
-      fieldToSelectionSet(fieldDef, args, clientSelection),
+      makeClientSelection(
+        selectionSetNode([{
+          kind: Kind.FIELD,
+          name: info.fieldNodes[0].name,
+          arguments: info.fieldNodes[0].arguments,
+          selectionSet: mergeSelectionSets(info.fieldNodes),
+        }]),
+        info.parentType,
+        info
+      )
     );
-    return extractByPath(injectErrors(result), [fieldDef.name]);
+    return extractByPath(injectErrors(result), [info.fieldName]);
   }
 
   // proxy value or Error instance injected by the proxy
@@ -246,7 +253,14 @@ function resolveWithResolver(
   {query, argumentsFragment}: ResolveWithArgs
 ): GraphQLFieldResolver<any, any> {
   return async (rootValue, args, context: ProxyContext, info) => {
-    const clientSelection = makeClientSelection(info);
+    let clientSelection = mergeSelectionSets(info.fieldNodes);
+    if (clientSelection) {
+      clientSelection = makeClientSelection(
+        clientSelection,
+        getNamedType(info.returnType),
+        info
+      );
+    }
     const queryArgs = {
       ...args,
       ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
@@ -256,19 +270,18 @@ function resolveWithResolver(
 }
 
 function makeClientSelection(
+  selection: SelectionSetNode,
+  selectionRootType: GraphQLNamedType,
   info: GraphQLResolveInfo
-): SelectionSetNode | undefined {
-  const clientSelection = mergeSelectionSets(info.fieldNodes);
-  if (!clientSelection) return;
-
+): SelectionSetNode {
   const {schema, variableValues, fragments, operation} = info;
   const typeInfo = new TypeInfo(schema);
-  typeInfo['_typeStack'].push(getNamedType(info.returnType));
+  typeInfo['_typeStack'].push(selectionRootType);
 
   // TODO: cache to do only once per operation
   const argToTypeMap = getOperationArgToTypeMap(schema, operation);
 
-  return visit(clientSelection, visitWithTypeInfo(typeInfo, {
+  return visit(selection, visitWithTypeInfo(typeInfo, {
     ...replaceVariablesVisitor(variableValues, argToTypeMap),
     [Kind.FIELD]: () => {
       const field = typeInfo.getFieldDef();
@@ -302,6 +315,7 @@ function makeClientSelection(
           });
         }
 
+        // FIXME: recursive remove empty selection
         if (isAbstractType(type) || node.selections.length === 0)
           return injectTypename(node);
         else

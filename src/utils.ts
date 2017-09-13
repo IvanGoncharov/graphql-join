@@ -324,7 +324,7 @@ function nameNode(name: string): NameNode {
   };
 }
 
-function selectionSetNode(selections: SelectionNode[]) {
+export function selectionSetNode(selections: SelectionNode[]) {
   return {
     kind: Kind.SELECTION_SET,
     selections,
@@ -340,26 +340,6 @@ export function mergeSelectionSets(
   );
 
   return sets.length > 0 ? selectionSetNode(sets): undefined;
-}
-
-export function fieldToSelectionSet(
-  fieldDef: GraphQLField<any, any>,
-  args: object,
-  selectionSet?: SelectionSetNode
-): SelectionSetNode {
-  return selectionSetNode([{
-    kind: Kind.FIELD,
-    name: nameNode(fieldDef.name),
-    selectionSet,
-    arguments: Object.entries(args).map(([name,value]) => {
-      const argDef = fieldDef.args.find(arg => arg.name === name)!;
-      return {
-        kind: Kind.ARGUMENT,
-        name: nameNode(name),
-        value: astFromValue(argDef.type, value),
-      }
-    }),
-  }]);
 }
 
 export function visitWithResultPath(resultPath: string[], visitor) {
