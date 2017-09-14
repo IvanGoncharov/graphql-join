@@ -64,9 +64,12 @@ import {
 
   OperationArgToTypeMap,
   getOperationArgToTypeMap,
-  replaceVariablesVisitor,
   mergeSelectionSets,
   selectionSetNode,
+
+  prefixAlias,
+  prefixAliasesVisitor,
+  replaceVariablesVisitor,
 } from './utils';
 
 // PROXY:
@@ -246,7 +249,8 @@ async function fieldResolver(
   }
 
   // proxy value or Error instance injected by the proxy
-  return rootValue && rootValue[info.path.key];
+  const key = info.path.key as string;
+  return rootValue[prefixAlias(key)] || rootValue[key];
 }
 
 function resolveWithResolver(
@@ -283,6 +287,7 @@ function makeClientSelection(
 
   return visit(selection, visitWithTypeInfo(typeInfo, {
     ...replaceVariablesVisitor(variableValues, argToTypeMap),
+    ...prefixAliasesVisitor(),
     [Kind.FIELD]: () => {
       const field = typeInfo.getFieldDef();
       if (field.name.startsWith('__'))

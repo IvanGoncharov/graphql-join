@@ -431,3 +431,18 @@ export function replaceVariablesVisitor(
     },
   }
 }
+
+export function prefixAliasesVisitor() {
+  return {
+    [Kind.NAME]: (node: NameNode, key: string) => {
+      if (key === 'alias') {
+        // Never clashes with field names since they can't have '___' in names
+        return nameNode(prefixAlias(node.value));
+      }
+    }
+  };
+}
+
+export function prefixAlias(alias: string) :string {
+  return '___a_' + alias;
+}

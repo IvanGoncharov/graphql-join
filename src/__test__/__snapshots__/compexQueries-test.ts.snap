@@ -3,6 +3,8 @@
 exports[` 1`] = `
 type Bar {
   bar: Baz
+  one: String
+  two: String
 }
 
 type Baz {
@@ -12,6 +14,37 @@ type Baz {
 type Query {
   foo: Bar
 }
+`;
+
+exports[`type system cross aliased fields in client query 1`] = `
+{
+  foo {
+    ___a___typename: bar {
+      baz
+    }
+    ___a_one: two
+    ___a_two: one
+  }
+}
+`;
+
+exports[`type system cross aliased fields in client query 2`] = `
+[
+  "\\n      {\\n        foo {\\n          bar: __typename,\\n          __typename: bar { baz }\\n          one: two\\n          two: one\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "bar": "Bar",
+        "__typename": {
+          "baz": "test::Baz::baz"
+        },
+        "one": "test::Bar::two",
+        "two": "test::Bar::one"
+      }
+    },
+    "errors": []
+  }
+]
 `;
 
 exports[`type system duplicate fields in client query 1`] = `
@@ -44,8 +77,8 @@ exports[`type system duplicate fields in client query 2`] = `
 exports[`type system field alias in client query 1`] = `
 {
   foo {
-    barAlias: bar {
-      bazAlias: baz
+    ___a_barAlias: bar {
+      ___a_bazAlias: baz
     }
   }
 }

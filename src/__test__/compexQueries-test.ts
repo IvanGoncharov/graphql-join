@@ -6,8 +6,8 @@ describe('type system', () => {
 
   const execute = testJoin({
     test: `
-      type Query { foo: Bar }
-      type Bar { bar: Baz }
+      type Query { foo: Bar}
+      type Bar { bar: Baz, one: String, two: String }
       type Baz { baz: String }
     `,
   }, 'schema { query: Query }');
@@ -19,6 +19,19 @@ describe('type system', () => {
           barAlias: bar {
             bazAlias: baz
           }
+        }
+      }
+    `);
+  });
+
+  test('cross aliased fields in client query', async () => {
+    await execute(`
+      {
+        foo {
+          bar: __typename,
+          __typename: bar { baz }
+          one: two
+          two: one
         }
       }
     `);
