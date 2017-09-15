@@ -62,8 +62,6 @@ import {
   visitWithResultPath,
   extractByPath,
 
-  OperationArgToTypeMap,
-  getOperationArgToTypeMap,
   mergeSelectionSets,
   selectionSetNode,
 
@@ -198,7 +196,7 @@ export function joinSchemas(
 
   const operations = mapValues(
     keyByNameNodes(joinDefs.operations),
-    op => new ProxyOperation(op, remoteSchemas)
+    op => new ProxyOperation(op)
   );
   const fragments = mapValues(
     keyByNameNodes(joinDefs.fragments),
@@ -282,11 +280,8 @@ function makeClientSelection(
   const typeInfo = new TypeInfo(schema);
   typeInfo['_typeStack'].push(selectionRootType);
 
-  // TODO: cache to do only once per operation
-  const argToTypeMap = getOperationArgToTypeMap(schema, operation);
-
   return visit(selection, visitWithTypeInfo(typeInfo, {
-    ...replaceVariablesVisitor(variableValues, argToTypeMap),
+    ...replaceVariablesVisitor(variableValues),
     ...prefixAliasesVisitor(),
     [Kind.FIELD]: () => {
       const field = typeInfo.getFieldDef();
@@ -413,18 +408,12 @@ class ProxyOperation {
   _operationType: OperationTypeNode;
   _resultPath: string[];
   _selectionSet: SelectionSetNode;
-  _argToType: OperationArgToTypeMap;
+  // TODO: default variables
 
-  constructor(
-    operationDef: OperationDefinitionNode,
-    remoteSchemas: RemoteSchemasMap
-  ) {
+  constructor(operationDef: OperationDefinitionNode) {
     this._operationType = operationDef.operation;
     this._sendTo = getSendDirective(operationDef)!.to;
     this._selectionSet = operationDef.selectionSet;
-
-    const schema = remoteSchemas[this._sendTo].schema;
-    this._argToType = getOperationArgToTypeMap(schema, operationDef);
 
     const resultPath = [];
     visit(operationDef, visitWithResultPath(resultPath, {
@@ -453,7 +442,7 @@ class ProxyOperation {
 
   _wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
     return visit(this._selectionSet, {
-      ...replaceVariablesVisitor(args, this._argToType),
+      ...replaceVariablesVisitor(args),
       [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
         const selections = node.selections;
         if (selections[0] && selections[0].kind === Kind.FRAGMENT_SPREAD) {

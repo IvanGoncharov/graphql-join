@@ -1,0 +1,152 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`proxy calls pass Input object as argument 1`] = `
+type Query {
+  foo(values: Values): String
+}
+
+input Values {
+  int: Int
+  float: Float
+  string: String
+  boolean: Boolean
+  arrayOfInt: [Int]
+  otherValue: Values
+  arrayOfValues: [Values]
+}
+`;
+
+exports[`proxy calls pass Input object as argument 2`] = `
+{
+  foo(values: {string: "testString"})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 3`] = `
+{
+  foo(values: {int: 1})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 4`] = `
+{
+  foo(values: {float: 3.14})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 5`] = `
+{
+  foo(values: {boolean: true})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 6`] = `
+{
+  foo(values: {int: null})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 7`] = `
+{
+  foo(values: {arrayOfInt: [1, 2, 3, 4, 5]})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 8`] = `
+{
+  foo(values: {otherValue: {int: 1}})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 9`] = `
+{
+  foo(values: {arrayOfValues: [{int: 1}, {float: 2.1}]})
+}
+`;
+
+exports[`proxy calls pass Input object as argument 10`] = `
+[
+  "\\n      {\\n        string: foo(values: { string: \\"testString\\" })\\n        int: foo(values: { int: 1 })\\n        float: foo(values: { float: 3.14 })\\n        boolean: foo(values: { boolean: true })\\n        null: foo(values: { int: null })\\n        arrayOfInt: foo(values: { arrayOfInt: [1, 2, 3, 4, 5] })\\n        otherValue: foo(values: { otherValue: { int: 1 } })\\n        arrayOfValues: foo(values: {\\n          arrayOfValues: [{ int: 1 }, { float: 2.1}]\\n        })\\n      }\\n    ",
+  {
+    "data": {
+      "string": "test::Query::foo;args={\\"values\\":{\\"string\\":\\"testString\\"}}",
+      "int": "test::Query::foo;args={\\"values\\":{\\"int\\":1}}",
+      "float": "test::Query::foo;args={\\"values\\":{\\"float\\":3.14}}",
+      "boolean": "test::Query::foo;args={\\"values\\":{\\"boolean\\":true}}",
+      "null": "test::Query::foo;args={\\"values\\":{\\"int\\":null}}",
+      "arrayOfInt": "test::Query::foo;args={\\"values\\":{\\"arrayOfInt\\":[1,2,3,4,5]}}",
+      "otherValue": "test::Query::foo;args={\\"values\\":{\\"otherValue\\":{\\"int\\":1}}}",
+      "arrayOfValues": "test::Query::foo;args={\\"values\\":{\\"arrayOfValues\\":[{\\"int\\":1},{\\"float\\":2.1}]}}"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`proxy calls pass random JSON as argument 1`] = `
+scalar JSON
+
+type Query {
+  foo(json: JSON): String
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 2`] = `
+{
+  foo(json: "testString")
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 3`] = `
+{
+  foo(json: 3.14)
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 4`] = `
+{
+  foo(json: true)
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 5`] = `
+{
+  foo(json: null)
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 6`] = `
+{
+  foo(json: [1, 2, 3, 4, 5])
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 7`] = `
+{
+  foo(json: {a: 1, b: 2, c: 3})
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 8`] = `
+{
+  foo(json: [{a: 1}, {b: 2}, {c: 3}])
+}
+`;
+
+exports[`proxy calls pass random JSON as argument 9`] = `
+[
+  "\\n      {\\n        string: foo(json: \\"testString\\")\\n        number: foo(json: 3.14)\\n        boolean: foo(json: true)\\n        null: foo(json: null)\\n        array: foo(json: [1, 2, 3, 4, 5])\\n        object: foo(json: { a: 1, b: 2, c: 3 })\\n        arrayOfObjects: foo(json: [{ a: 1 }, { b: 2 }, { c: 3}])\\n      }\\n    ",
+  {
+    "data": {
+      "string": "test::Query::foo;args={\\"json\\":\\"testString\\"}",
+      "number": "test::Query::foo;args={\\"json\\":3.14}",
+      "boolean": "test::Query::foo;args={\\"json\\":true}",
+      "null": "test::Query::foo;args={\\"json\\":null}",
+      "array": "test::Query::foo;args={\\"json\\":[1,2,3,4,5]}",
+      "object": "test::Query::foo;args={\\"json\\":{\\"a\\":1,\\"b\\":2,\\"c\\":3}}",
+      "arrayOfObjects": "test::Query::foo;args={\\"json\\":[{\\"a\\":1},{\\"b\\":2},{\\"c\\":3}]}"
+    },
+    "errors": []
+  }
+]
+`;

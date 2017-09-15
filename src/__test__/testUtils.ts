@@ -38,10 +38,14 @@ expect.addSnapshotSerializer({
 
 function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
   return (
-    _1, _2, _3,
+    _1, args: object, _3,
     {fieldName, parentType}: GraphQLResolveInfo
   ) => {
-    return `${schemaName}::${parentType.name}::${fieldName}`;
+    let result = `${schemaName}::${parentType.name}::${fieldName}`;
+    if (Object.keys(args).length !== 0) {
+      result += `;args=${JSON.stringify(args)}`
+    }
+    return result;
   }
 }
 

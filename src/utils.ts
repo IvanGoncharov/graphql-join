@@ -4,6 +4,7 @@ import {
   flatten,
   mapValues,
   cloneDeep,
+  isInteger,
   set as pathSet
 } from 'lodash';
 
@@ -13,6 +14,7 @@ import {
   Source,
   NameNode,
   TypeNode,
+  ValueNode,
   DocumentNode,
   VariableNode,
   NamedTypeNode,
@@ -42,7 +44,6 @@ import {
   visit,
   printSchema,
   typeFromAST,
-  astFromValue,
   isAbstractType,
   extendSchema,
   buildASTSchema,
@@ -82,7 +83,7 @@ function stubType(
 }
 
 // TODO: Merge into graphql-js
-function astToJSON(ast) {
+function astToJSON(ast: ValueNode): any {
   switch (ast.kind) {
     case Kind.NULL:
       return null;
@@ -100,30 +101,42 @@ function astToJSON(ast) {
         object[name.value] = astToJSON(value);
         return object;
       }, {});
+    default:
+      throw Error("Unexpected value");
   }
 }
 
-// function jsonToAST(json: any) {
-//   switch (typeof json) {
-//     case 'string':
-//       return { kind: Kind.STRING, value: json };
-//     case 'boolean':
-//       return { kind: Kind.BOOLEAN, value: json };
-//     case 'number':
-//       if (isInteger(json)) {
-//         return { kind: Kind.INT, value: json };
-//       } else {
-//         return { kind: Kind.FLOAT, value: json };
-//       }
-//     case 'object':
-//       if (json === null) {
-//         return { kind: Kind.NULL };
-//       } else if (Array.isArray(json)) {
-//         return { kind: Kind.LIST, value: json.map(jsonToAST) };
-//       } else {
-//       }
-//   }
-// }
+function jsonToAST(json: any): ValueNode {
+  switch (typeof json) {
+    case 'string':
+      return { kind: Kind.STRING, value: json };
+    case 'boolean':
+      return { kind: Kind.BOOLEAN, value: json };
+    case 'number':
+      if (isInteger(json)) {
+        return { kind: Kind.INT, value: json };
+      } else {
+        return { kind: Kind.FLOAT, value: json };
+      }
+    case 'object':
+      if (json === null) {
+        return { kind: Kind.NULL };
+      } else if (Array.isArray(json)) {
+        return { kind: Kind.LIST, values: json.map(jsonToAST) };
+      } else {
+        return {
+          kind: Kind.OBJECT,
+          fields: Object.entries(json).map(([name, value]) => ({
+            kind: Kind.OBJECT_FIELD,
+            name: nameNode(name),
+            value: jsonToAST(value),
+          })),
+        }
+      }
+    default:
+      throw Error("Unexpected value");
+  }
+}
 
 // TODO: Merge into graphql-js
 export function isBuiltinType(name: string) {
@@ -407,27 +420,11 @@ export function keyByNameNodes<T extends { name?: NameNode }>(
   return keyBy(nodes, node => node.name!.value);
 }
 
-export type OperationArgToTypeMap = { [ argName: string ]: GraphQLInputType };
-
-export function getOperationArgToTypeMap(
-  schema: GraphQLSchema,
-  {variableDefinitions}: OperationDefinitionNode
-): OperationArgToTypeMap {
-  return mapValues(
-    keyBy(variableDefinitions, ({variable}) => variable.name.value),
-    node => typeFromAST(schema, node.type) as GraphQLInputType
-  );
-}
-
-export function replaceVariablesVisitor(
-  args: object,
-  argTypes: OperationArgToTypeMap
-): object {
+export function replaceVariablesVisitor(args: object): object {
   return {
     [Kind.VARIABLE]: (node: VariableNode) => {
-      const argName = node.name.value;
-      // FIXME: astFromValue wouldn't hadle array and object as scalar
-      return astFromValue(args[argName], argTypes[argName]);
+      const name = node.name.value;
+      return jsonToAST(args[name]);
     },
   }
 }
