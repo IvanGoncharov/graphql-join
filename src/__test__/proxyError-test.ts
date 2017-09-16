@@ -1,5 +1,3 @@
-declare var describe, test;
-
 import { GraphQLError } from 'graphql';
 import { testJoin } from './testUtils';
 

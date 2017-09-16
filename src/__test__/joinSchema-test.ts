@@ -1,5 +1,3 @@
-declare var describe, test;
-
 import { testJoin } from './testUtils';
 
 describe('joinSchema', () => {
