@@ -1,5 +1,67 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`proxy calls default arguments of query 1`] = `
+type Query {
+  foo(testArg: String): String
+}
+`;
+
+exports[`proxy calls default arguments of query 2`] = `
+[
+  "{ foo }",
+  {
+    "errors": [
+      {
+        "message": "Unexpected value",
+        "locations": [
+          {
+            "line": 1,
+            "column": 3
+          }
+        ],
+        "path": [
+          "foo"
+        ]
+      }
+    ],
+    "data": {
+      "foo": null
+    }
+  }
+]
+`;
+
+exports[`proxy calls omitting optional arguments of query 1`] = `
+type Query {
+  foo(testArg: String): String
+}
+`;
+
+exports[`proxy calls omitting optional arguments of query 2`] = `
+[
+  "{ foo }",
+  {
+    "errors": [
+      {
+        "message": "Unexpected value",
+        "locations": [
+          {
+            "line": 1,
+            "column": 3
+          }
+        ],
+        "path": [
+          "foo"
+        ]
+      }
+    ],
+    "data": {
+      "foo": null
+    }
+  }
+]
+`;
+
 exports[`proxy calls pass Input object as argument 1`] = `
 type Query {
   foo(values: Values): String

@@ -66,5 +66,39 @@ describe('proxy calls', () => {
       }
     `);
   });
+
+  test('omitting optional arguments of query', async () => {
+    const execute = testJoin({
+      test: `
+        type Query { foo(testArg: String): String }
+      `,
+    }, `
+      type Query {
+        foo(testArg: String): String @resolveWith(query: "foo")
+      }
+
+      query foo($testArg: String) @send(to: "test") {
+        foo(values: $testArg)
+      }
+    `);
+    await execute('{ foo }');
+  });
+
+  test('default arguments of query', async () => {
+    const execute = testJoin({
+      test: `
+        type Query { foo(testArg: String): String }
+      `,
+    }, `
+      type Query {
+        foo(testArg: String): String @resolveWith(query: "foo")
+      }
+
+      query foo($testArg: String = "default") @send(to: "test") {
+        foo(values: $testArg)
+      }
+    `);
+    await execute('{ foo }');
+  });
 });
 

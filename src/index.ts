@@ -472,8 +472,10 @@ function validation() {
   //   - names in export directive should be uniq
   //   - should be used in @resolveWith
   //   - no field alliases
+  //   - forbid @skip/@include
   // operations:
   //   - only query and mutation no subscription
+  //   - mutation should be used only on fields in mutation root
   //   - should have name
   //   - shoud have uniq names
   //   - should have @send(to:)
@@ -482,4 +484,5 @@ function validation() {
   //   - don't reference other fragments
   //   - should be used in @resolveWith
   //   - no field alliases
+  //   - forbid @skip/@include
 }
