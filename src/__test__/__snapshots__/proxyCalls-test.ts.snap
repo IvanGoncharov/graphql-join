@@ -7,26 +7,19 @@ type Query {
 `;
 
 exports[`proxy calls default arguments of query 2`] = `
+{
+  foo(testArg: "default")
+}
+`;
+
+exports[`proxy calls default arguments of query 3`] = `
 [
   "{ foo }",
   {
-    "errors": [
-      {
-        "message": "Unexpected value",
-        "locations": [
-          {
-            "line": 1,
-            "column": 3
-          }
-        ],
-        "path": [
-          "foo"
-        ]
-      }
-    ],
     "data": {
-      "foo": null
-    }
+      "foo": "test::Query::foo;args={\\"testArg\\":\\"default\\"}"
+    },
+    "errors": []
   }
 ]
 `;
@@ -38,26 +31,19 @@ type Query {
 `;
 
 exports[`proxy calls omitting optional arguments of query 2`] = `
+{
+  foo
+}
+`;
+
+exports[`proxy calls omitting optional arguments of query 3`] = `
 [
   "{ foo }",
   {
-    "errors": [
-      {
-        "message": "Unexpected value",
-        "locations": [
-          {
-            "line": 1,
-            "column": 3
-          }
-        ],
-        "path": [
-          "foo"
-        ]
-      }
-    ],
     "data": {
-      "foo": null
-    }
+      "foo": "test::Query::foo"
+    },
+    "errors": []
   }
 ]
 `;

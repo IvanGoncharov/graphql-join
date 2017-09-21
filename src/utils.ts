@@ -25,6 +25,7 @@ import {
   FieldDefinitionNode,
   SchemaDefinitionNode,
   FragmentDefinitionNode,
+  VariableDefinitionNode,
   DirectiveDefinitionNode,
   OperationDefinitionNode,
   TypeExtensionDefinitionNode,
@@ -106,7 +107,7 @@ function astToJSON(ast: ValueNode): any {
   }
 }
 
-function jsonToAST(json: any): ValueNode {
+export function jsonToAST(json: any): ValueNode {
   switch (typeof json) {
     case 'string':
       return { kind: Kind.STRING, value: json };
@@ -153,11 +154,13 @@ export function addPrefixToTypeNode(
     return type;
   }
 
-  type.name = prefixName(type.name);
-  return visitTypeReferences(
-    type,
-    node => ({ ...node, name: prefixName(node.name) })
-  );
+  return {
+    ...visitTypeReferences(
+      type,
+      node => ({ ...node, name: prefixName(node.name) })
+    ),
+    name: prefixName(type.name)
+  };
 
   function prefixName(node: NameNode): NameNode {
     const name = node.value;
@@ -330,7 +333,7 @@ export function injectTypename(node: SelectionSetNode): SelectionSetNode {
   ]);
 }
 
-function nameNode(name: string): NameNode {
+export function nameNode(name: string): NameNode {
   return {
     kind: Kind.NAME,
     value: name,
@@ -420,26 +423,7 @@ export function keyByNameNodes<T extends { name?: NameNode }>(
   return keyBy(nodes, node => node.name!.value);
 }
 
-export function replaceVariablesVisitor(args: object): object {
-  return {
-    [Kind.VARIABLE]: (node: VariableNode) => {
-      const name = node.name.value;
-      return jsonToAST(args[name]);
-    },
-  }
-}
-
-export function prefixAliasesVisitor() {
-  return {
-    [Kind.NAME]: (node: NameNode, key: string) => {
-      if (key === 'alias') {
-        // Never clashes with field names since they can't have '___' in names
-        return nameNode(prefixAlias(node.value));
-      }
-    }
-  };
-}
-
-export function prefixAlias(alias: string) :string {
+export function prefixAlias(alias: string): string {
+  // Never clashes with field names since they can't have '___' in names
   return '___a_' + alias;
 }

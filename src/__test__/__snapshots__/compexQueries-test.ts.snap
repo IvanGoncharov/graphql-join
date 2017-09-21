@@ -8,7 +8,7 @@ type Bar {
 }
 
 type Baz {
-  baz: String
+  baz(testArg: String): String
 }
 
 type Query {
@@ -16,7 +16,33 @@ type Query {
 }
 `;
 
-exports[`type system cross aliased fields in client query 1`] = `
+exports[`complex queries @skip/@include in client query 1`] = `
+query ($true: Boolean = true, $false: Boolean = false) {
+  foo {
+    bar @skip(if: $false) {
+      baz @include(if: $true)
+    }
+  }
+}
+`;
+
+exports[`complex queries @skip/@include in client query 2`] = `
+[
+  "\\n      query ($true: Boolean = true, $false: Boolean = false) {\\n        foo @include(if: $true) {\\n          bar @skip(if: $false) {\\n            baz @include(if: $true)\\n          }\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "bar": {
+          "baz": "test::Baz::baz"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`complex queries cross aliased fields in client query 1`] = `
 {
   foo {
     ___a___typename: bar {
@@ -28,7 +54,7 @@ exports[`type system cross aliased fields in client query 1`] = `
 }
 `;
 
-exports[`type system cross aliased fields in client query 2`] = `
+exports[`complex queries cross aliased fields in client query 2`] = `
 [
   "\\n      {\\n        foo {\\n          bar: __typename,\\n          __typename: bar { baz }\\n          one: two\\n          two: one\\n        }\\n      }\\n    ",
   {
@@ -47,7 +73,33 @@ exports[`type system cross aliased fields in client query 2`] = `
 ]
 `;
 
-exports[`type system duplicate fields in client query 1`] = `
+exports[`complex queries default variable value in client query 1`] = `
+query ($testVar: String = "defaultValue") {
+  foo {
+    bar {
+      baz(testArg: $testVar)
+    }
+  }
+}
+`;
+
+exports[`complex queries default variable value in client query 2`] = `
+[
+  "\\n      query ($testVar: String = \\"defaultValue\\") {\\n        foo {\\n          bar {\\n            baz(testArg: $testVar)\\n          }\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "bar": {
+          "baz": "test::Baz::baz;args={\\"testArg\\":\\"defaultValue\\"}"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`complex queries duplicate fields in client query 1`] = `
 {
   foo {
     bar {
@@ -57,7 +109,7 @@ exports[`type system duplicate fields in client query 1`] = `
 }
 `;
 
-exports[`type system duplicate fields in client query 2`] = `
+exports[`complex queries duplicate fields in client query 2`] = `
 [
   "\\n      {\\n        foo {\\n          __typename\\n        }\\n        foo {\\n          bar {\\n            baz\\n          }\\n        }\\n      }\\n    ",
   {
@@ -74,7 +126,7 @@ exports[`type system duplicate fields in client query 2`] = `
 ]
 `;
 
-exports[`type system field alias in client query 1`] = `
+exports[`complex queries field alias in client query 1`] = `
 {
   foo {
     ___a_barAlias: bar {
@@ -84,7 +136,7 @@ exports[`type system field alias in client query 1`] = `
 }
 `;
 
-exports[`type system field alias in client query 2`] = `
+exports[`complex queries field alias in client query 2`] = `
 [
   "\\n      {\\n        fooAlias: foo {\\n          barAlias: bar {\\n            bazAlias: baz\\n          }\\n        }\\n      }\\n    ",
   {
@@ -100,7 +152,7 @@ exports[`type system field alias in client query 2`] = `
 ]
 `;
 
-exports[`type system fragments in client query 1`] = `
+exports[`complex queries fragments in client query 1`] = `
 {
   foo {
     ... on Bar {
@@ -114,7 +166,7 @@ exports[`type system fragments in client query 1`] = `
 }
 `;
 
-exports[`type system fragments in client query 2`] = `
+exports[`complex queries fragments in client query 2`] = `
 [
   "\\n      {\\n        ... FooFrag\\n      }\\n      fragment FooFrag on Query {\\n        foo {\\n          ... BarFrag\\n        }\\n      }\\n      fragment BarFrag on Bar {\\n        bar {\\n          ... BazFrag\\n        }\\n      }\\n      fragment BazFrag on Baz {\\n        baz\\n      }\\n    ",
   {
@@ -130,24 +182,55 @@ exports[`type system fragments in client query 2`] = `
 ]
 `;
 
-exports[`type system variables in client query 1`] = `
-{
+exports[`complex queries undefined variable in client query 1`] = `
+query ($testVar: String) {
   foo {
-    bar @skip(if: false) {
-      baz @include(if: true)
+    bar {
+      baz(testArg: $testVar)
     }
   }
 }
 `;
 
-exports[`type system variables in client query 2`] = `
+exports[`complex queries undefined variable in client query 2`] = `
 [
-  "\\n      query ($true: Boolean = true, $false: Boolean = false) {\\n        foo @include(if: $true) {\\n          bar @skip(if: $false) {\\n            baz @include(if: $true)\\n          }\\n        }\\n      }\\n    ",
+  "\\n      query ($testVar: String) {\\n        foo {\\n          bar {\\n            baz(testArg: $testVar)\\n          }\\n        }\\n      }\\n    ",
   {
     "data": {
       "foo": {
         "bar": {
           "baz": "test::Baz::baz"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`complex queries variable in client query 1`] = `
+query ($testVar: String) {
+  foo {
+    bar {
+      baz(testArg: $testVar)
+    }
+  }
+}
+`;
+
+exports[`complex queries variable in client query 2`] = `
+[
+  {
+    "query": "query ($testVar: String) {\\n        foo {\\n          bar {\\n            baz(testArg: $testVar)\\n          }\\n        }\\n      }",
+    "variableValues": {
+      "testVar": "testValue"
+    }
+  },
+  {
+    "data": {
+      "foo": {
+        "bar": {
+          "baz": "test::Baz::baz;args={\\"testArg\\":\\"testValue\\"}"
         }
       }
     },

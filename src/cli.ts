@@ -13,7 +13,7 @@ import { readGraphQLFile } from './utils';
 
 const endpoints: EndpointMap = {
   graphcool: {
-    url: 'http://localhost:9002/graphql'
+    url: 'http://localhost:9010/graphql'
   },
   yelp: {
     prefix: 'Yelp_',

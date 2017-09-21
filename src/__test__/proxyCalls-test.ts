@@ -77,8 +77,8 @@ describe('proxy calls', () => {
         foo(testArg: String): String @resolveWith(query: "foo")
       }
 
-      query foo($testArg: String) @send(to: "test") {
-        foo(values: $testArg)
+      query foo($testVal: String) @send(to: "test") {
+        foo(testArg: $testVal)
       }
     `);
     await execute('{ foo }');
@@ -95,10 +95,9 @@ describe('proxy calls', () => {
       }
 
       query foo($testArg: String = "default") @send(to: "test") {
-        foo(values: $testArg)
+        foo(testArg: $testArg)
       }
     `);
     await execute('{ foo }');
   });
 });
-

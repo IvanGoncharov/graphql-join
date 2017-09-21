@@ -50,7 +50,7 @@ function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
 }
 
 function makeProxy(schemaName: string, schema: GraphQLSchema) {
-  return (queryAST: DocumentNode) => {
+  return (queryAST: DocumentNode, variableValues?: object) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
     // FIXME: Should use executeQuery but blocked by
@@ -58,6 +58,7 @@ function makeProxy(schemaName: string, schema: GraphQLSchema) {
     return graphql({
       schema,
       source: new Source(query, 'Send to ' + schemaName),
+      variableValues,
       fieldResolver: fakeFieldResolver(schemaName),
     });
   };
@@ -82,7 +83,7 @@ export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
   expect(schema).toBeInstanceOf(GraphQLSchema);
   expect(printSchema(schema)).toMatchSnapshot();
   return async (
-    query: string,
+    query: string | { query: string, variableValues: object },
     results?: { [schemaName: string]: ExecutionResult }
   ) => {
     const proxyFns = _.mapValues(remoteSchemas, ({schema}, name) => {
@@ -92,9 +93,12 @@ export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
       return makeProxy(name, schema)
     });
 
+    const queryObj = typeof query === 'string' ?
+      { query: query, variableValues: {} } : query;
     const result = await executeQuery({
       schema,
-      document: parse(new Source(query, 'ClientQuery')),
+      document: parse(new Source(queryObj.query, 'ClientQuery')),
+      variableValues: queryObj.variableValues,
       contextValue: new ProxyContext(proxyFns),
     });
 

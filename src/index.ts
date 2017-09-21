@@ -1,7 +1,11 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   Kind,
+  ASTNode,
+  NameNode,
+  ValueNode,
   FieldNode,
+  VariableNode,
   DocumentNode,
   NamedTypeNode,
   DirectiveNode,
@@ -10,6 +14,7 @@ import {
   TypeDefinitionNode,
   FragmentSpreadNode,
   FragmentDefinitionNode,
+  VariableDefinitionNode,
   OperationDefinitionNode,
 
   ExecutionResult,
@@ -34,7 +39,10 @@ import {
 } from 'graphql';
 
 import {
+  fromPairs,
   mapValues,
+  cloneDeep,
+  set as pathSet,
 } from 'lodash';
 
 import {
@@ -61,13 +69,13 @@ import {
   buildSchemaFromSDL,
   visitWithResultPath,
   extractByPath,
+  nameNode,
+  jsonToAST,
 
   mergeSelectionSets,
   selectionSetNode,
 
   prefixAlias,
-  prefixAliasesVisitor,
-  replaceVariablesVisitor,
 } from './utils';
 
 // PROXY:
@@ -78,7 +86,8 @@ import {
 //   - check that mutation is executed in sequence
 //   - handle 'argumentsFragment' on root fields
 
-export type SchemaProxyFn = (query: DocumentNode) => Promise<ExecutionResult>;
+export type SchemaProxyFn =
+  (query: DocumentNode, variableValues?: object) => Promise<ExecutionResult>;
 export type SchemaProxyFnMap = { [schemaName: string]: SchemaProxyFn };
 export type RemoteSchema = {
   schema: GraphQLSchema,
@@ -89,11 +98,11 @@ export type RemoteSchemasMap = { [schemaName: string]: RemoteSchema };
 function makeProxy(settings): SchemaProxyFn {
   const { url, headers } = settings;
   const client = new GraphQLClient(url, { headers });
-  return async (queryDocument: DocumentNode) => {
+  return async (queryDocument: DocumentNode, variableValues?: object) => {
     // FIXME: conver errors
     // FIXME: better client
     const query = print(queryDocument);
-    const data = await client.request(query);
+    const data = await client.request(query, variableValues);
     return { data } as ExecutionResult;
   }
 }
@@ -106,8 +115,9 @@ export async function getRemoteSchemas(
     async ([name, endpoint]) => {
       const {prefix, ...settings} = endpoint;
       const proxyFn = makeProxy(settings);
-      const introspection = (await proxyFn(parsedIntrospectionQuery)).data;
-      const schema = buildClientSchema(introspection as IntrospectionQuery);
+      const introspectionResult = await proxyFn(parsedIntrospectionQuery, {});
+      const introspection = introspectionResult.data as IntrospectionQuery;
+      const schema = buildClientSchema(introspection);
 
       return {name, remoteSchema: { prefix, schema }, proxyFn };
     }
@@ -131,7 +141,7 @@ type Endpoint = {
 };
 export type EndpointMap = { [name: string]: Endpoint };
 
-type OriginTypes = { type: GraphQLNamedType, originAPI: string }[];
+type OriginTypes = { originType: GraphQLNamedType, originAPI: string }[];
 
 function buildJoinSchema(
   joinDefs: SplittedAST,
@@ -173,7 +183,7 @@ function getRemoteTypes(
       remoteTypes.push({
         ast: addPrefixToTypeNode(typesMap[typeName], prefix),
         originTypes: [{
-          type: schema.getType(typeName),
+          originType: schema.getType(typeName),
           originAPI: api,
         }],
       });
@@ -204,17 +214,15 @@ export function joinSchemas(
   );
 
   stubSchema(schema, (type, field) => {
-    const rawArgs = getResolveWithDirective(field.astNode);
-    if (rawArgs) {
-      const args = {
-        query: operations[rawArgs.query],
-        argumentsFragment: rawArgs.argumentsFragment ?
-          fragments[rawArgs.argumentsFragment] : undefined,
+    field.resolve = fieldResolver;
+
+    const resolveWithArgs = getResolveWithDirective(field.astNode);
+    if (resolveWithArgs) {
+      field['resolveWith'] = {
+        query: operations[resolveWithArgs.query],
+        argumentsFragment: resolveWithArgs.argumentsFragment ?
+          fragments[resolveWithArgs.argumentsFragment] : undefined,
       };
-      field['resolveWith'] = args;
-      field.resolve = resolveWithResolver(args);
-    } else {
-      field.resolve = fieldResolver;
     }
   });
   return schema;
@@ -226,103 +234,27 @@ async function fieldResolver(
   context: ProxyContext,
   info: GraphQLResolveInfo,
 ) {
+  const fieldDef = info.parentType.getFields()[info.fieldName];
+  const resolveWith = fieldDef['resolveWith'];
+
+  if (resolveWith) {
+    const { query, argumentsFragment } = resolveWith as ResolveWithArgs;
+    const queryArgs = {
+      ...args,
+      ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
+    };
+    return context.proxyToRemote(query.makeProxyCall(queryArgs), info);
+  }
+
   const isRoot = (info.path.prev == null);
   if (isRoot) {
-    const result = await context.proxyToRemote(
-      // Root type always have only one origin type
-      info.parentType['originTypes'][0].originAPI,
-      info.operation.operation,
-      makeClientSelection(
-        selectionSetNode([{
-          kind: Kind.FIELD,
-          name: info.fieldNodes[0].name,
-          arguments: info.fieldNodes[0].arguments,
-          selectionSet: mergeSelectionSets(info.fieldNodes),
-        }]),
-        info.parentType,
-        info
-      )
-    );
-    return extractByPath(injectErrors(result), [info.fieldName]);
+    const proxyCall = makeRootFieldProxyCall(args, info);
+    return context.proxyToRemote(proxyCall, info);
   }
 
   // proxy value or Error instance injected by the proxy
   const key = info.path.key as string;
   return rootValue[prefixAlias(key)] || rootValue[key];
-}
-
-function resolveWithResolver(
-  {query, argumentsFragment}: ResolveWithArgs
-): GraphQLFieldResolver<any, any> {
-  return async (rootValue, args, context: ProxyContext, info) => {
-    let clientSelection = mergeSelectionSets(info.fieldNodes);
-    if (clientSelection) {
-      clientSelection = makeClientSelection(
-        clientSelection,
-        getNamedType(info.returnType),
-        info
-      );
-    }
-    const queryArgs = {
-      ...args,
-      ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
-    };
-    return query.call(context, queryArgs, clientSelection);
-  }
-}
-
-function makeClientSelection(
-  selection: SelectionSetNode,
-  selectionRootType: GraphQLNamedType,
-  info: GraphQLResolveInfo
-): SelectionSetNode {
-  const {schema, variableValues, fragments, operation} = info;
-  const typeInfo = new TypeInfo(schema);
-  typeInfo['_typeStack'].push(selectionRootType);
-
-  return visit(selection, visitWithTypeInfo(typeInfo, {
-    ...replaceVariablesVisitor(variableValues),
-    ...prefixAliasesVisitor(),
-    [Kind.FIELD]: () => {
-      const field = typeInfo.getFieldDef();
-      if (field.name.startsWith('__'))
-        return null;
-      if (field['resolveWith'])
-        return null;
-    },
-    [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
-      const fragment = fragments[node.name.value];
-      return {
-        kind: Kind.INLINE_FRAGMENT,
-        typeCondition: fragment.typeCondition,
-        selectionSet: fragment.selectionSet,
-        directives: node.directives,
-      }
-    },
-    [Kind.SELECTION_SET]: {
-      leave(node: SelectionSetNode) {
-        const type = typeInfo.getParentType()
-        // TODO: should we also handle Interfaces and Unions here?
-        if (type instanceof GraphQLObjectType) {
-          Object.values(type.getFields()).forEach(field => {
-            const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
-            if (!resolveWith) return;
-
-            const {argumentsFragment} = resolveWith;
-            if (argumentsFragment) {
-              node = argumentsFragment.injectIntoSelectionSet(node);
-            }
-          });
-        }
-
-        // FIXME: recursive remove empty selection
-        if (isAbstractType(type) || node.selections.length === 0)
-          return injectTypename(node);
-        else
-          return node;
-      }
-    },
-  }));
 }
 
 export class ProxyContext {
@@ -332,18 +264,87 @@ export class ProxyContext {
     //FIXME: validate proxyFns
   }
 
-  proxyToRemote(
-    schemaName: string,
-    operation: OperationTypeNode,
-    selectionSet: SelectionSetNode
+  async proxyToRemote(
+    call: ProxyCall,
+    info: GraphQLResolveInfo,
   ): Promise<ExecutionResult> {
-    const query = makeASTDocument([{
-      kind: 'OperationDefinition',
-      operation,
-      selectionSet,
+    const query = this.makeQuery(call, info);
+    const proxyFn = this.proxyFns[call.sendTo];
+    const result = await proxyFn(query, info.variableValues);
+    const data = injectErrors(result);
+    return extractByPath(data, call.resultPath);
+  }
+
+  makeQuery(
+    call: ProxyCall,
+    info: GraphQLResolveInfo
+  ): DocumentNode {
+    const seenVariables = {};
+
+    const selection = mergeSelectionSets(info.fieldNodes);
+    const typeInfo = new TypeInfo(info.schema);
+    const rootType = getNamedType(info.returnType);
+    typeInfo['_typeStack'].push(rootType);
+
+    const clientSelection = visit(selection, visitWithTypeInfo(typeInfo, {
+      [Kind.VARIABLE]: (node: VariableNode) => {
+        seenVariables[node.name.value] = true;
+      },
+      [Kind.NAME]: (node: NameNode, key: string) => {
+        if (key === 'alias') {
+          return nameNode(prefixAlias(node.value));
+        }
+      },
+      [Kind.FIELD]: () => {
+        const field = typeInfo.getFieldDef();
+        if (field.name.startsWith('__'))
+          return null;
+        if (field['resolveWith'])
+          return null;
+      },
+      // TODO: don't inline fragments
+      [Kind.FRAGMENT_SPREAD]: (node: FragmentSpreadNode) => {
+        const fragment = info.fragments[node.name.value];
+        return {
+          kind: Kind.INLINE_FRAGMENT,
+          typeCondition: fragment.typeCondition,
+          selectionSet: fragment.selectionSet,
+          directives: node.directives,
+        }
+      },
+      [Kind.SELECTION_SET]: {
+        leave(node: SelectionSetNode) {
+          const type = typeInfo.getParentType()
+          // TODO: should we also handle Interfaces and Unions here?
+          if (type instanceof GraphQLObjectType) {
+            Object.values(type.getFields()).forEach(field => {
+              const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
+              if (!resolveWith) return;
+
+              const {argumentsFragment} = resolveWith;
+              if (argumentsFragment) {
+                node = argumentsFragment.injectIntoSelectionSet(node);
+              }
+            });
+          }
+
+          // FIXME: recursive remove empty selection
+          if (isAbstractType(type) || node.selections.length === 0)
+            return injectTypename(node);
+          else
+            return node;
+        }
+      },
+    }));
+
+    return makeASTDocument([{
+      kind: Kind.OPERATION_DEFINITION,
+      operation: call.operationType,
+      selectionSet: call.makeSelectionSet(clientSelection),
+      variableDefinitions: (info.operation.variableDefinitions || []).filter(
+        (varDef: VariableDefinitionNode) => seenVariables[varDef.variable.name.value]
+      ),
     }]);
-    // FIXME: error if invalid name
-    return this.proxyFns[schemaName](query);
   }
 }
 
@@ -401,54 +402,109 @@ class ArgumentsFragment {
   }
 }
 
+type ProxyCall = {
+  sendTo: string;
+  operationType: OperationTypeNode;
+  makeSelectionSet: (clientSelection?: SelectionSetNode) => SelectionSetNode;
+  resultPath: string[];
+}
+
+function makeRootFieldProxyCall(
+  args: object,
+  info: GraphQLResolveInfo
+): ProxyCall {
+  const { fieldName, operation, parentType } = info;
+  // Root type always have only one origin type
+  const { originAPI, originType } = parentType['originTypes'][0];
+
+  return {
+    sendTo: originAPI,
+    operationType: operation.operation,
+    makeSelectionSet: (clientSelection) => selectionSetNode([{
+      kind: Kind.FIELD,
+      name: nameNode(fieldName),
+      arguments: Object.entries(args).map(([name,value]) => ({
+        kind: Kind.ARGUMENT,
+        name: nameNode(name),
+        value: jsonToAST(value),
+      })),
+      selectionSet: clientSelection,
+    }]),
+    resultPath: [fieldName],
+  }
+}
+
+
 // FIXME: strip type prefixes from user selection parts and fragments before proxing
 // FIXME: strip type prefixes from __typename inside results
 class ProxyOperation {
+  // TODO: default variables
   _sendTo: string;
   _operationType: OperationTypeNode;
   _resultPath: string[];
+  _defaultVarsAST: { [name: string]: ValueNode };
   _selectionSet: SelectionSetNode;
-  // TODO: default variables
 
   constructor(operationDef: OperationDefinitionNode) {
-    this._operationType = operationDef.operation;
     this._sendTo = getSendDirective(operationDef)!.to;
+    this._operationType = operationDef.operation;
     this._selectionSet = operationDef.selectionSet;
 
-    const resultPath = [];
-    visit(operationDef, visitWithResultPath(resultPath, {
+    this._defaultVarsAST = {};
+    for (const varDef of (operationDef.variableDefinitions || [])) {
+      const defaultValue = varDef.defaultValue;
+      if (defaultValue) {
+        this._defaultVarsAST[varDef.variable.name.value] = defaultValue;
+      }
+    }
+
+    this._resultPath = [];
+    const currentResultPath = [];
+    visit(operationDef, visitWithResultPath(currentResultPath, {
       [Kind.FIELD]: (node) => {
-        if (resultPath.length > (this._resultPath || []).length) {
-          this._resultPath = [...resultPath];
+        if (currentResultPath.length > this._resultPath.length) {
+          this._resultPath = [...currentResultPath];
         }
       },
     }));
   }
 
-  async call(
-    context: ProxyContext,
-    queryArgs: object,
-    clientSelection?: SelectionSetNode
-  ): Promise<any> {
-    const result = await context.proxyToRemote(
-      this._sendTo,
-      this._operationType,
-      this._wrapSelection(queryArgs, clientSelection),
-    );
-
-    const data = injectErrors(result);
-    return extractByPath(data, this._resultPath);
+  makeProxyCall(args: object): ProxyCall {
+    return {
+      sendTo: this._sendTo,
+      operationType: this._operationType,
+      resultPath: this._resultPath,
+      makeSelectionSet:
+        (clientSelection) => this._makeSelection(args, clientSelection),
+    };
   }
 
-  _wrapSelection(args: object, clientSelection?: SelectionSetNode): SelectionSetNode {
+  _makeSelection(
+    args: object,
+    clientSelection?: SelectionSetNode
+  ): SelectionSetNode {
+    const argsAST = {
+      ...this._defaultVarsAST,
+      ...mapValues(args, value => jsonToAST(value)),
+    };
+
+    const removeNodesWithoutValue = {
+      leave(node: ASTNode) {
+        return (node['value'] == null) ? null : undefined;
+      },
+    };
+
     return visit(this._selectionSet, {
-      ...replaceVariablesVisitor(args),
       [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
         const selections = node.selections;
         if (selections[0] && selections[0].kind === Kind.FRAGMENT_SPREAD) {
           return clientSelection;
         }
       },
+      // Replace variable with AST value or delete if unspecified
+      [Kind.VARIABLE]: (node: VariableNode) => (argsAST[node.name.value] || null),
+      [Kind.OBJECT_FIELD]: removeNodesWithoutValue,
+      [Kind.ARGUMENT]: removeNodesWithoutValue,
     });
   }
 }
