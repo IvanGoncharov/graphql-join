@@ -198,3 +198,45 @@ exports[`proxy calls pass random JSON as argument 9`] = `
   }
 ]
 `;
+
+exports[`proxy calls use variable inside input object 1`] = `
+type Query {
+  foo(baz: String): String
+}
+`;
+
+exports[`proxy calls use variable inside input object 2`] = `
+{
+  foo(values: {bar: "FixedBarValue", baz: "BazValue"})
+}
+`;
+
+exports[`proxy calls use variable inside input object 3`] = `
+[
+  "{ foo(baz: \\"BazValue\\") }",
+  {
+    "data": {
+      "foo": "test::Query::foo;args={\\"values\\":{\\"bar\\":\\"FixedBarValue\\",\\"baz\\":\\"BazValue\\"}}"
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`proxy calls use variable inside input object 4`] = `
+{
+  foo(values: {bar: "FixedBarValue"})
+}
+`;
+
+exports[`proxy calls use variable inside input object 5`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": "test::Query::foo;args={\\"values\\":{\\"bar\\":\\"FixedBarValue\\"}}"
+    },
+    "errors": []
+  }
+]
+`;

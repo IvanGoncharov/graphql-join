@@ -100,4 +100,25 @@ describe('proxy calls', () => {
     `);
     await execute('{ foo }');
   });
+
+  test('use variable inside input object', async () => {
+    const execute = testJoin({
+      test: `
+        input TestInput {
+          bar: String
+          baz: String
+        }
+        type Query { foo(values: TestInput): String }
+      `,
+    }, `
+      type Query {
+        foo(baz: String): String @resolveWith(query: "foo")
+      }
+      query foo($baz: String) @send(to: "test") {
+        foo(values: { bar: "FixedBarValue", baz: $baz})
+      }
+    `);
+    await execute(`{ foo(baz: "BazValue") }`);
+    await execute(`{ foo }`);
+  });
 });
