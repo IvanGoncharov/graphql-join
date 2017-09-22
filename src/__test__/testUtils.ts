@@ -22,7 +22,7 @@ import {
 } from 'graphql';
 import * as _ from 'lodash';
 
-import { joinSchemas, ProxyContext } from '../index';
+import { GraphQLJoinSchema, ProxyContext } from '../index';
 import { stubSchema } from '../utils';
 
 expect.addSnapshotSerializer({
@@ -78,7 +78,8 @@ export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
   });
 
   const joinAST = parse(new Source(joinSDL, 'Join SDL'));
-  const schema = joinSchemas(joinAST, remoteSchemas);
+  const joinSchema = new GraphQLJoinSchema(joinAST, remoteSchemas);
+  const schema = joinSchema.schema;
 
   expect(schema).toBeInstanceOf(GraphQLSchema);
   expect(printSchema(schema)).toMatchSnapshot();
@@ -88,7 +89,11 @@ export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
   ) => {
     const proxyFns = _.mapValues(remoteSchemas, ({schema}, name) => {
       if (results && results[name]) {
-        return (() => Promise.resolve(results[name]));
+        return (queryAST) => {
+          const query = print(queryAST);
+          expect(query).toMatchSnapshot();
+          return Promise.resolve(results[name])
+        };
       }
       return makeProxy(name, schema)
     });
@@ -99,7 +104,7 @@ export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
       schema,
       document: parse(new Source(queryObj.query, 'ClientQuery')),
       variableValues: queryObj.variableValues,
-      contextValue: new ProxyContext(proxyFns),
+      contextValue: new ProxyContext(joinSchema, proxyFns),
     });
 
     expect([

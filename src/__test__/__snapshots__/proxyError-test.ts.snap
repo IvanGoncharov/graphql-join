@@ -11,6 +11,14 @@ type Query {
 `;
 
 exports[`proxy errors error with path 1`] = `
+{
+  foo {
+    bar
+  }
+}
+`;
+
+exports[`proxy errors error with path 2`] = `
 [
   "{ foo { bar } }",
   {
@@ -39,6 +47,14 @@ exports[`proxy errors error with path 1`] = `
 `;
 
 exports[`proxy errors global error 1`] = `
+{
+  foo {
+    bar
+  }
+}
+`;
+
+exports[`proxy errors global error 2`] = `
 [
   "{ foo { bar } }",
   {
@@ -64,6 +80,14 @@ exports[`proxy errors global error 1`] = `
 `;
 
 exports[`proxy errors multiple global errors 1`] = `
+{
+  foo {
+    bar
+  }
+}
+`;
+
+exports[`proxy errors multiple global errors 2`] = `
 [
   "{ foo { bar } }",
   {

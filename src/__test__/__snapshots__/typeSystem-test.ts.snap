@@ -7,6 +7,14 @@ type Query {
 `;
 
 exports[`type system arrays in response type 2`] = `
+{
+  foo {
+    bar
+  }
+}
+`;
+
+exports[`type system arrays in response type 3`] = `
 [
   "{ foo }",
   {
@@ -33,6 +41,16 @@ type Query {
 `;
 
 exports[`type system arrays of objects with arrays in response type 2`] = `
+{
+  foo {
+    bar {
+      baz
+    }
+  }
+}
+`;
+
+exports[`type system arrays of objects with arrays in response type 3`] = `
 [
   "{ foo }",
   {

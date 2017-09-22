@@ -5,7 +5,7 @@ import { printSchema } from 'graphql';
 import {
   EndpointMap,
   ProxyContext,
-  joinSchemas,
+  GraphQLJoinSchema,
   getRemoteSchemas,
 } from './index';
 
@@ -28,14 +28,14 @@ const endpoints: EndpointMap = {
 async function main() {
   const joinAST = readGraphQLFile('./join.graphql');
   const {remoteSchemas, proxyFns} = await getRemoteSchemas(endpoints);
-  const joinSchema = joinSchemas(joinAST, remoteSchemas);
-  console.log(printSchema(joinSchema));
+  const joinSchema = new GraphQLJoinSchema(joinAST, remoteSchemas);
+  console.log(printSchema(joinSchema.schema));
 
   const app = express();
 
   app.use('/graphql', graphqlHTTP({
-    schema: joinSchema,
-    context: new ProxyContext(proxyFns),
+    schema: joinSchema.schema,
+    context: new ProxyContext(joinSchema, proxyFns),
     graphiql: true,
     formatError: error => ({
       message: error.message,

@@ -18,14 +18,17 @@ describe('joinSchema', () => {
       'schema { query: PrEfIx_Query }'
     );
 
-    execute(`
-      {
+    await execute(
+      `{
         foo {
           ... on PrEfIx_Bar { bar }
           ... on PrEfIx_Baz { baz }
         }
-      }
-    `);
+      }`,
+      { test: { data: {
+        foo: { ___t_test: 'Baz', baz: 'test::Baz::baz' }
+      }}}
+    );
   });
 
 });

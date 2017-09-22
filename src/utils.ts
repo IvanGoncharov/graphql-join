@@ -38,6 +38,7 @@ import {
   GraphQLScalarType,
   GraphQLObjectType,
   GraphQLResolveInfo,
+  GraphQLTypeResolver,
   GraphQLFieldResolver,
   ExecutionResult,
 
@@ -51,34 +52,35 @@ import {
   getVisitFn,
 } from 'graphql';
 
-type StubFieldFn = (type: GraphQLNamedType, field: GraphQLField<any, any>) => void;
+type SchemaResolvers = {
+  resolve?: GraphQLFieldResolver<any, any>;
+  resolveType?: GraphQLTypeResolver<any,any>;
+};
+
 export function stubSchema(
   schema: GraphQLSchema,
-  stubField?: StubFieldFn
+  resolvers: SchemaResolvers = {}
 ): void {
   for (const type of Object.values(schema.getTypeMap())) {
     if (!isBuiltinType(type.name)) {
-      stubType(type, stubField);
+      stubType(type, resolvers);
     }
   }
 }
 
 function stubType(
   type: GraphQLNamedType,
-  stubField?: StubFieldFn
+  resolvers: SchemaResolvers = {}
 ): void {
   if (type instanceof GraphQLScalarType) {
     type.serialize = (value => value);
     type.parseLiteral = astToJSON;
     type.parseValue = astToJSON;
   } else if (isAbstractType(type)) {
-    type.resolveType = (obj => obj.__typename);
+    type.resolveType = resolvers.resolveType || (obj => obj.__typename);
   } else if (type instanceof GraphQLObjectType) {
     for (const field of Object.values(type.getFields())) {
-      field.resolve = undefined;
-      if (stubField) {
-        stubField(type, field);
-      }
+      field.resolve = resolvers.resolve || undefined;
     }
   }
 }
@@ -322,13 +324,17 @@ export function injectErrors(result: ExecutionResult): object | void {
   return data;
 }
 
-export function injectTypename(node: SelectionSetNode): SelectionSetNode {
+export function injectTypename(
+  node: SelectionSetNode,
+  alias?: string
+): SelectionSetNode {
   // TODO: don't add duplicating __typename
   return selectionSetNode([
     ...node.selections,
     {
       kind: Kind.FIELD,
       name: nameNode('__typename'),
+      alias: alias != null ? nameNode(alias) : undefined,
     },
   ]);
 }
@@ -426,4 +432,8 @@ export function keyByNameNodes<T extends { name?: NameNode }>(
 export function prefixAlias(alias: string): string {
   // Never clashes with field names since they can't have '___' in names
   return '___a_' + alias;
+}
+
+export function typeNameAlias(schemaName: string): string {
+  return '___t_' + schemaName;
 }

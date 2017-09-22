@@ -23,38 +23,27 @@ type PrEfIx_Query {
 exports[`joinSchema Prefix remote types 2`] = `
 {
   foo {
-    ... on PrEfIx_Bar {
+    ... on Bar {
       bar
     }
-    ... on PrEfIx_Baz {
+    ... on Baz {
       baz
     }
-    __typename
+    ___t_test: __typename
   }
 }
 `;
 
 exports[`joinSchema Prefix remote types 3`] = `
 [
-  "\\n      {\\n        foo {\\n          ... on PrEfIx_Bar { bar }\\n          ... on PrEfIx_Baz { baz }\\n        }\\n      }\\n    ",
+  "{\\n        foo {\\n          ... on PrEfIx_Bar { bar }\\n          ... on PrEfIx_Baz { baz }\\n        }\\n      }",
   {
-    "errors": [
-      {
-        "message": "Unknown type \\"PrEfIx_Bar\\".\\nUnknown type \\"PrEfIx_Baz\\".",
-        "locations": [
-          {
-            "line": 3,
-            "column": 9
-          }
-        ],
-        "path": [
-          "foo"
-        ]
-      }
-    ],
     "data": {
-      "foo": null
-    }
+      "foo": {
+        "baz": "test::Baz::baz"
+      }
+    },
+    "errors": []
   }
 ]
 `;
