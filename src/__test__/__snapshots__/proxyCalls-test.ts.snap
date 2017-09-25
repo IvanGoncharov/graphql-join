@@ -24,6 +24,30 @@ exports[`proxy calls default arguments of query 3`] = `
 ]
 `;
 
+exports[`proxy calls omiting optional argument 1`] = `
+type Query {
+  foo(testArg: String): String
+}
+`;
+
+exports[`proxy calls omiting optional argument 2`] = `
+{
+  foo
+}
+`;
+
+exports[`proxy calls omiting optional argument 3`] = `
+[
+  "{ foo }",
+  {
+    "data": {
+      "foo": "test::Query::foo"
+    },
+    "errors": []
+  }
+]
+`;
+
 exports[`proxy calls omitting optional arguments of query 1`] = `
 type Query {
   foo(testArg: String): String

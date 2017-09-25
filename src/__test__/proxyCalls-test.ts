@@ -67,6 +67,19 @@ describe('proxy calls', () => {
     `);
   });
 
+  test('omiting optional argument', async () => {
+    const execute = testJoin({
+      test: `
+        type Query { foo(testArg: String): String }
+      `,
+    }, `
+        schema {
+          query: Query
+        }
+    `);
+    await execute(`{ foo }`);
+  });
+
   test('omitting optional arguments of query', async () => {
     const execute = testJoin({
       test: `

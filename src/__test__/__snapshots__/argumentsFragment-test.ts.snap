@@ -1,0 +1,46 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`arguments fragment tests get argument from fragment 1`] = `
+schema {
+  query: Query1
+}
+
+type Query1 {
+  testObj: TestType
+}
+
+type TestType {
+  foo: String
+  bar: String
+}
+`;
+
+exports[`arguments fragment tests get argument from fragment 2`] = `
+{
+  testObj {
+    ... on TestType {
+      foo
+    }
+  }
+}
+`;
+
+exports[`arguments fragment tests get argument from fragment 3`] = `
+{
+  bar(fooArg: "test1::TestType::foo")
+}
+`;
+
+exports[`arguments fragment tests get argument from fragment 4`] = `
+[
+  "{ testObj { bar } }",
+  {
+    "data": {
+      "testObj": {
+        "bar": "test2::Query::bar;args={\\"fooArg\\":\\"test1::TestType::foo\\"}"
+      }
+    },
+    "errors": []
+  }
+]
+`;

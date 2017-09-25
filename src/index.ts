@@ -374,19 +374,16 @@ export class ProxyContext {
         }
       },
       [Kind.SELECTION_SET]: {
-        leave(node: SelectionSetNode) {
+        leave: (node: SelectionSetNode) => {
           const type = typeInfo.getParentType()
           // TODO: should we also handle Interfaces and Unions here?
           if (type instanceof GraphQLObjectType) {
-            Object.values(type.getFields()).forEach(field => {
-              const resolveWith = field['resolveWith'] as ResolveWithArgs | undefined;
-              if (!resolveWith) return;
-
-              const {argumentsFragment} = resolveWith;
-              if (argumentsFragment) {
-                node = argumentsFragment.injectIntoSelectionSet(node);
+            for (const fieldName of Object.keys(type.getFields())) {
+              const resolveWith = this.getResolveWithArgs(type.name, fieldName);
+              if (resolveWith && resolveWith.argumentsFragment) {
+                node = resolveWith.argumentsFragment.injectIntoSelectionSet(node);
               }
-            });
+            }
           }
 
           // FIXME: recursive remove empty selection
@@ -453,13 +450,16 @@ class ArgumentsFragment {
   }
 
   extractArgs(rootValue: object): object {
-    return mapValues(this._exportPaths, path => {
+    const args = Object.create(null);
+    for (const [name, path] of Object.entries(this._exportPaths)) {
       const value = extractByPath(rootValue, path);
       if (value instanceof Error) {
         throw value;
+      } else if (value !== undefined) {
+        args[name] = value;
       }
-      return value;
-    });
+    }
+    return args;
   }
 }
 
@@ -497,9 +497,6 @@ function proxyRootField(
   }, info);
 }
 
-
-// FIXME: strip type prefixes from user selection parts and fragments before proxing
-// FIXME: strip type prefixes from __typename inside results
 class ProxyOperation {
   _sendTo: string;
   _operationType: OperationTypeNode;
@@ -582,6 +579,7 @@ function validation() {
   //   - all fields inside extends and type defs should have @resolveWith
   //   - all field args + all fragment exports used in operation
   //   - fields return types should match types returned by "query" including LIST and NON_NULL
+  //   - TEMPORARY: @resolveWith for root fields shouldn't use fragments
   // fragments:
   //   - shoud have uniq names
   //   - shouldn't reference other fragments
@@ -591,6 +589,7 @@ function validation() {
   //   - should be used in @resolveWith
   //   - no field alliases
   //   - forbid @skip/@include
+  //   - TEMPORARY: fragment shouldn't contain fields with @resolveWith
   // operations:
   //   - only query and mutation no subscription
   //   - mutation should be used only on fields in mutation root
