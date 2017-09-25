@@ -1,6 +1,9 @@
+import { readFileSync } from 'fs';
+
+import * as path from 'path';
 import * as express from 'express';
 import * as graphqlHTTP from 'express-graphql';
-import { printSchema } from 'graphql';
+import { Source, printSchema } from 'graphql';
 
 import {
   EndpointMap,
@@ -8,8 +11,6 @@ import {
   GraphQLJoinSchema,
   getRemoteSchemas,
 } from './index';
-
-import { readGraphQLFile } from './utils';
 
 const endpoints: EndpointMap = {
   graphcool: {
@@ -25,10 +26,15 @@ const endpoints: EndpointMap = {
   }
 };
 
+function readGraphQLFile(path: string): Source {
+  const data = readFileSync(path, 'utf-8');
+  return new Source(data, path);
+}
+
 async function main() {
-  const joinAST = readGraphQLFile('./join.graphql');
+  const joinIDL = readGraphQLFile('./join.graphql');
   const {remoteSchemas, proxyFns} = await getRemoteSchemas(endpoints);
-  const joinSchema = new GraphQLJoinSchema(joinAST, remoteSchemas);
+  const joinSchema = new GraphQLJoinSchema(joinIDL, remoteSchemas);
   console.log(printSchema(joinSchema.schema));
 
   const app = express();

@@ -1,4 +1,3 @@
-import { readFileSync } from 'fs';
 import {
   keyBy,
   flatten,
@@ -11,7 +10,6 @@ import {
 import {
   ASTNode,
   Kind,
-  Source,
   NameNode,
   TypeNode,
   ValueNode,
@@ -281,11 +279,6 @@ export function schemaToASTTypes(
   const ast = parse(sdl, { noLocation: true });
   const types = splitAST(ast).types;
   return types.filter(type => !isBuiltinType(type.name.value));
-}
-
-export function readGraphQLFile(path: string): DocumentNode {
-  const data = readFileSync(path, 'utf-8');
-  return parse(new Source(data, path));
 }
 
 export function buildSchemaFromSDL(defs: SplittedAST) {

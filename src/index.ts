@@ -1,6 +1,7 @@
 import { GraphQLClient } from 'graphql-request';
 import {
   Kind,
+  Source,
   ASTNode,
   NameNode,
   ValueNode,
@@ -161,10 +162,15 @@ export class GraphQLJoinSchema {
   };
 
   constructor(
-    joinAST: DocumentNode,
+    joinIDL: string | Source,
     remoteSchemas: RemoteSchemasMap
   ) {
-    const joinDefs = splitAST(joinAST);
+    if (typeof joinIDL !== 'string' &&  !(joinIDL instanceof Source)) {
+      throw new TypeError('Must provide joinIDL. Received: ' + String(joinIDL));
+    }
+    //FIXME: validate remoteSchemas
+
+    const joinDefs = splitAST(parse(joinIDL));
     const extTypeRefs = getExternalTypeNames(joinDefs);
     const remoteTypes = getRemoteTypes(remoteSchemas, extTypeRefs);
     this.schema = buildSchemaFromSDL({
