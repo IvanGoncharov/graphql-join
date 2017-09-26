@@ -1,7 +1,6 @@
 import {
   keyBy,
   flatten,
-  mapValues,
   cloneDeep,
   isInteger,
   set as pathSet
@@ -11,31 +10,23 @@ import {
   ASTNode,
   Kind,
   NameNode,
-  TypeNode,
   ValueNode,
   DocumentNode,
-  VariableNode,
   NamedTypeNode,
   SelectionNode,
   DefinitionNode,
   SelectionSetNode,
   TypeDefinitionNode,
-  FieldDefinitionNode,
   SchemaDefinitionNode,
   FragmentDefinitionNode,
-  VariableDefinitionNode,
   DirectiveDefinitionNode,
   OperationDefinitionNode,
   TypeExtensionDefinitionNode,
 
-  GraphQLError,
   GraphQLSchema,
-  GraphQLField,
-  GraphQLInputType,
   GraphQLNamedType,
   GraphQLScalarType,
   GraphQLObjectType,
-  GraphQLResolveInfo,
   GraphQLTypeResolver,
   GraphQLFieldResolver,
   ExecutionResult,
@@ -43,7 +34,6 @@ import {
   parse,
   visit,
   printSchema,
-  typeFromAST,
   isAbstractType,
   extendSchema,
   buildASTSchema,
@@ -103,7 +93,7 @@ function astToJSON(ast: ValueNode): any {
         return object;
       }, {});
     default:
-      throw Error("Unexpected value");
+      throw Error('Unexpected value');
   }
 }
 
@@ -132,10 +122,10 @@ export function jsonToAST(json: any): ValueNode {
             name: nameNode(name),
             value: jsonToAST(value),
           })),
-        }
+        };
       }
     default:
-      throw Error("Unexpected value");
+      throw Error('Unexpected value');
   }
 }
 
@@ -164,7 +154,7 @@ export function addPrefixToTypeNode(
 
   function prefixName(node: NameNode): NameNode {
     const name = node.value;
-    return isBuiltinType(name) ? node: { ...node, value: prefix + name };
+    return isBuiltinType(name) ? node : { ...node, value: prefix + name };
   }
 }
 
@@ -195,12 +185,12 @@ export function getTypesWithDependencies(
 }
 
 export function getExternalTypeNames(definitions: SplittedAST): string[] {
-  var seenTypes = {};
+  const seenTypes = {};
   markTypeRefs(definitions.schemas);
   markTypeRefs(definitions.types);
   markTypeRefs(definitions.typeExtensions);
 
-  var ownTypes = (definitions.types || []).map(type => type.name.value);
+  const ownTypes = (definitions.types || []).map(type => type.name.value);
   return Object.keys(seenTypes).filter(type => !ownTypes.includes(type));
 
   function markTypeRefs(defs) {
@@ -294,7 +284,7 @@ export function buildSchemaFromSDL(defs: SplittedAST) {
 }
 
 export function injectErrors(result: ExecutionResult): object | void {
-  if (result.errors == null) {
+  if (result.errors === undefined) {
     return result.data;
   }
 
@@ -327,7 +317,7 @@ export function injectTypename(
     {
       kind: Kind.FIELD,
       name: nameNode('__typename'),
-      alias: alias != null ? nameNode(alias) : undefined,
+      alias: alias !== undefined ? nameNode(alias) : undefined,
     },
   ]);
 }
@@ -354,7 +344,7 @@ export function mergeSelectionSets(
     .map(node => node.selectionSet!.selections)
   );
 
-  return sets.length > 0 ? selectionSetNode(sets): undefined;
+  return sets.length > 0 ? selectionSetNode(sets) : undefined;
 }
 
 export function visitWithResultPath(resultPath: string[], visitor) {

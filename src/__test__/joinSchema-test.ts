@@ -6,7 +6,7 @@ describe('joinSchema', () => {
     const execute = testJoin(
       {
         test: {
-          sdl: `
+          idl: `
             type Query { foo: BarOrBaz }
             union BarOrBaz = Bar | Baz
             type Bar { bar: String }

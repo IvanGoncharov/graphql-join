@@ -35,7 +35,6 @@ const directiveIDL = `
 const directiveSchema = buildSchema(directiveIDL);
 const directives = keyBy(directiveSchema.getDirectives(), 'name');
 
-
 function buildGetter<T>(
   directive: GraphQLDirective
 ): (node?: { directives?: Array<DirectiveNode> }) => T | undefined {

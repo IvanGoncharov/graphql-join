@@ -1,6 +1,5 @@
 import { readFileSync } from 'fs';
 
-import * as path from 'path';
 import * as express from 'express';
 import * as graphqlHTTP from 'express-graphql';
 import { Source, printSchema } from 'graphql';
@@ -58,4 +57,3 @@ async function main() {
 main().catch(e => {
   console.log(e);
 });
-

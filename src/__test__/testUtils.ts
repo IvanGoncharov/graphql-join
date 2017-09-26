@@ -64,21 +64,23 @@ function makeProxy(schemaName: string, schema: GraphQLSchema) {
   };
 }
 
-type TestSchema = string | { sdl: string, prefix?: string };
+type TestSchema = string | { idl: string, prefix?: string };
 type TestSchemasMap = { [name: string]: TestSchema };
-export function testJoin(testSchemas: TestSchemasMap, joinSDL: string) {
+export function testJoin(testSchemas: TestSchemasMap, joinIDL: string) {
   const remoteSchemas = _.mapValues(testSchemas, (schemaSource, name) => {
     if (typeof schemaSource === 'string') {
-      schemaSource = { sdl: schemaSource };
+      schemaSource = { idl: schemaSource };
     }
-    const { prefix, sdl } = schemaSource;
-    const schema = buildSchema(new Source(sdl, name));
+    const { prefix, idl } = schemaSource;
+    const schema = buildSchema(new Source(idl, name));
     stubSchema(schema);
     return { schema , prefix};
   });
 
-  const joinAST = parse(new Source(joinSDL, 'Join SDL'));
-  const joinSchema = new GraphQLJoinSchema(joinAST, remoteSchemas);
+  const joinSchema = new GraphQLJoinSchema(
+    new Source(joinIDL, 'Join SDL'),
+    remoteSchemas
+  );
   const schema = joinSchema.schema;
 
   expect(schema).toBeInstanceOf(GraphQLSchema);
