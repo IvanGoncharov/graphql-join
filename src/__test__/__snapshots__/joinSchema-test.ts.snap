@@ -47,3 +47,46 @@ exports[`joinSchema Prefix remote types 3`] = `
   }
 ]
 `;
+
+exports[`joinSchema Proxy only types referenced inside join schema 1`] = `
+type Query {
+  typeToProxy: TypeToProxy
+}
+
+type SubTypeToProxy {
+  baz: String
+}
+
+type TypeToProxy {
+  foo: String
+  bar: SubTypeToProxy
+}
+`;
+
+exports[`joinSchema Proxy only types referenced inside join schema 2`] = `
+{
+  typeToProxy {
+    foo
+    bar {
+      baz
+    }
+  }
+}
+`;
+
+exports[`joinSchema Proxy only types referenced inside join schema 3`] = `
+[
+  "\\n      {\\n        typeToProxy {\\n          foo\\n          bar {\\n            baz\\n          }\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "typeToProxy": {
+        "foo": "test::TypeToProxy::foo",
+        "bar": {
+          "baz": "test::SubTypeToProxy::baz"
+        }
+      }
+    },
+    "errors": []
+  }
+]
+`;

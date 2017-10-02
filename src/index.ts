@@ -570,15 +570,17 @@ class ProxyOperation {
 function validation() {
   // TODO:
   // JOIN AST:
-  //   - check for subscription in schema and `Subscription` type and error as not supported
   //   - validate that all directive known and locations are correct
   //   - no specified directives inside join AST
   //   - all references to remote types have no conficts
-  //   - references to Query and Mutation roots point to exactly one remote type
   //   - all fields inside extends and type defs should have @resolveWith
   //   - all field args + all fragment exports used in operation
   //   - fields return types should match types returned by "query" including LIST and NON_NULL
   //   - TEMPORARY: @resolveWith for root fields shouldn't use fragments
+  // schema:
+  //   - check for subscription in schema and `Subscription` type and error as not supported
+  //   - references to Query and Mutation roots point to exactly one remote type
+  //   - reference only roots of the same type from remote schema
   // fragments:
   //   - shoud have uniq names
   //   - shouldn't reference other fragments
