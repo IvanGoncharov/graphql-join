@@ -79,7 +79,7 @@ export function testJoin(testSchemas: TestSchemasMap, joinIDL: string) {
   });
 
   const joinSchema = new GraphQLJoinSchema(
-    new Source(joinIDL, 'Join SDL'),
+    new Source(joinIDL, 'Join IDL'),
     remoteSchemas
   );
   const schema = joinSchema.schema;

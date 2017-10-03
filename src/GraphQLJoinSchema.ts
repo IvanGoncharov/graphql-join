@@ -99,7 +99,7 @@ export class GraphQLJoinSchema {
     const joinDefs = splitAST(parse(joinIDL));
     const extTypeRefs = getExternalTypeNames(joinDefs);
     const remoteTypes = getRemoteTypes(remoteSchemas, extTypeRefs);
-    this.schema = buildSchemaFromSDL({
+    this.schema = buildSchemaFromIDL({
       ...joinDefs,
       types: [
         ...joinDefs.types,
@@ -385,19 +385,19 @@ class ProxyOperation {
 function schemaToASTTypes(
   schema: GraphQLSchema
 ): TypeDefinitionNode[] {
-  const sdl = printSchema(schema);
-  const ast = parse(sdl, { noLocation: true });
+  const idl = printSchema(schema);
+  const ast = parse(idl, { noLocation: true });
   const types = splitAST(ast).types;
   return types.filter(type => !isBuiltinType(type.name.value));
 }
 
-function buildSchemaFromSDL(defs: SplittedAST) {
-  const sdl = makeASTDocument([
+function buildSchemaFromIDL(defs: SplittedAST) {
+  const idl = makeASTDocument([
     ...defs.schemas,
     ...defs.types,
   ]);
 
-  let schema = buildASTSchema(sdl);
+  let schema = buildASTSchema(idl);
 
   const extensionsAST = makeASTDocument(defs.typeExtensions);
   return extendSchema(schema, extensionsAST);
