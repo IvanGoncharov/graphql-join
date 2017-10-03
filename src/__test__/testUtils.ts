@@ -22,7 +22,8 @@ import {
 } from 'graphql';
 import * as _ from 'lodash';
 
-import { GraphQLJoinSchema, ProxyContext } from '../index';
+import { GraphQLJoinSchema } from '../GraphQLJoinSchema';
+import { ProxyContext } from '../ProxyContext';
 import { stubSchema } from '../utils';
 
 expect.addSnapshotSerializer({

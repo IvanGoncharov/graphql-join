@@ -1,0 +1,471 @@
+import {
+  Kind,
+  Source,
+  ASTNode,
+  NameNode,
+  ValueNode,
+  FieldNode,
+  VariableNode,
+  NamedTypeNode,
+  DirectiveNode,
+  SelectionSetNode,
+  OperationTypeNode,
+  TypeDefinitionNode,
+  FragmentDefinitionNode,
+  OperationDefinitionNode,
+
+  GraphQLSchema,
+  GraphQLNamedType,
+  GraphQLObjectType,
+  GraphQLResolveInfo,
+
+  parse,
+  visit,
+  printSchema,
+  extendSchema,
+  buildASTSchema,
+} from 'graphql';
+
+import {
+  mapValues,
+  set as pathSet,
+} from 'lodash';
+
+import {
+  exportDirective,
+  getSendDirective,
+  getExportDirective,
+  getResolveWithDirective,
+} from './directives';
+
+import { ProxyCall, ProxyContext } from './ProxyContext';
+
+import {
+  isBuiltinType,
+  keyByNameNodes,
+  stubSchema,
+  SplittedAST,
+  splitAST,
+  visitWithResultPath,
+  extractByPath,
+  nameNode,
+  jsonToAST,
+  makeASTDocument,
+
+  selectionSetNode,
+
+  prefixAlias,
+  typeNameAlias,
+} from './utils';
+
+export type RemoteSchema = {
+  schema: GraphQLSchema,
+  prefix?: string
+};
+
+export type RemoteSchemasMap = { [schemaName: string]: RemoteSchema };
+
+export type ResolveWithArgs = {
+  query: ProxyOperation;
+  argumentsFragment?: ArgumentsFragment;
+};
+
+type OriginTypes = { originType: GraphQLNamedType, originAPI: string }[];
+
+export class GraphQLJoinSchema {
+  schema: GraphQLSchema;
+  nameMapper: {
+    [ name: string ]: {
+      joinToOrigin: { [ joinName: string ]: string };
+      originToJoin: { [ originName: string ]: string };
+    }
+  };
+  originTypesMap: { [ name: string ]: OriginTypes };
+  resolveWithMap: {
+    [ typeName: string ]: {
+      [ fieldName: string ]: ResolveWithArgs;
+    };
+  };
+
+  constructor(
+    joinIDL: string | Source,
+    remoteSchemas: RemoteSchemasMap
+  ) {
+    if (typeof joinIDL !== 'string' && !(joinIDL instanceof Source)) {
+      throw new TypeError('Must provide joinIDL. Received: ' + String(joinIDL));
+    }
+    // FIXME: validate remoteSchemas
+
+    const joinDefs = splitAST(parse(joinIDL));
+    const extTypeRefs = getExternalTypeNames(joinDefs);
+    const remoteTypes = getRemoteTypes(remoteSchemas, extTypeRefs);
+    this.schema = buildSchemaFromSDL({
+      ...joinDefs,
+      types: [
+        ...joinDefs.types,
+        ...remoteTypes.map(type => type.ast),
+      ],
+    });
+
+    stubSchema(this.schema, {
+      resolve: fieldResolver,
+      resolveType: typeResolver,
+    });
+
+    this.nameMapper = {};
+    this.originTypesMap = {};
+    for (const { ast, originTypes } of remoteTypes) {
+      const typeName = ast.name.value;
+      this.originTypesMap[typeName] = originTypes;
+
+      for (const {originAPI, originType} of originTypes) {
+        const originName = originType.name;
+        pathSet(this.nameMapper,[originAPI, 'joinToOrigin', typeName], originName);
+        pathSet(this.nameMapper,[originAPI, 'originToJoin', originName], typeName);
+      }
+    }
+
+    const operations = mapValues(
+      keyByNameNodes(joinDefs.operations),
+      op => new ProxyOperation(op)
+    );
+    const fragments = mapValues(
+      keyByNameNodes(joinDefs.fragments),
+      f => new ArgumentsFragment(f)
+    );
+
+    this.resolveWithMap = {};
+    for (const type of Object.values(this.schema.getTypeMap())) {
+      if (type instanceof GraphQLObjectType) {
+        for (const field of Object.values(type.getFields())) {
+          const resolveWithArgs = getResolveWithDirective(field.astNode);
+          if (resolveWithArgs) {
+            pathSet(
+              this.resolveWithMap,
+              [type.name, field.name],
+              {
+                query: operations[resolveWithArgs.query],
+                argumentsFragment: resolveWithArgs.argumentsFragment ?
+                  fragments[resolveWithArgs.argumentsFragment] : undefined,
+              }
+            );
+          }
+        }
+      }
+    }
+
+  }
+}
+
+function getRemoteTypes(
+  remoteSchemas: RemoteSchemasMap,
+  extTypeRefs: string[]
+) {
+  const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
+  for (const [api, {schema, prefix = ''}] of Object.entries(remoteSchemas)) {
+    const typesMap = keyByNameNodes(schemaToASTTypes(schema));
+
+    const typesToExtract = extTypeRefs
+      .filter(name => name.startsWith(prefix))
+      .map(name => name.replace(prefix, ''))
+      .filter(name => typesMap[name]);
+
+    const extractedTypes = getTypesWithDependencies(typesMap, typesToExtract);
+    for (const typeName of extractedTypes) {
+      // TODO: merge types with same name and definition
+      remoteTypes.push({
+        ast: addPrefixToTypeNode(typesMap[typeName], prefix),
+        originTypes: [{
+          originType: schema.getType(typeName),
+          originAPI: api,
+        }],
+      });
+    }
+  }
+  return remoteTypes;
+}
+
+function typeResolver(
+  rootValue: object,
+  context: ProxyContext
+) {
+  const {nameMapper} = context.joinSchema;
+  for (const [schemaName, mapper] of Object.entries(nameMapper)) {
+    const typename = rootValue[typeNameAlias(schemaName)];
+    if (typename) {
+      return mapper.originToJoin[typename];
+    }
+  }
+  throw Error('Can not map rootValue to typename');
+}
+
+async function fieldResolver(
+  rootValue: object,
+  args: object,
+  context: ProxyContext,
+  info: GraphQLResolveInfo
+) {
+  const resolveWith =
+    context.getResolveWithArgs(info.parentType.name, info.fieldName);
+
+  if (resolveWith) {
+    const { query, argumentsFragment } = resolveWith as ResolveWithArgs;
+    const queryArgs = {
+      ...args,
+      ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
+    };
+    return context.proxyToRemote(query.makeProxyCall(queryArgs), info);
+  }
+
+  const isRoot = (info.path.prev === undefined);
+  if (isRoot) {
+    return proxyRootField(context, args, info);
+  }
+
+  // proxy value or Error instance injected by the proxy
+  const key = info.path.key as string;
+  return rootValue[prefixAlias(key)] || rootValue[key];
+}
+
+class ArgumentsFragment {
+  _selectionSet: SelectionSetNode;
+  _exportPaths: { [name: string]: string[] };
+  _typeCondition: NamedTypeNode;
+
+  constructor(fragment: FragmentDefinitionNode) {
+    const { typeCondition, selectionSet } = fragment;
+    this._typeCondition = typeCondition;
+
+    this._exportPaths = {};
+    const resultPath = [];
+    this._selectionSet = visit(selectionSet, visitWithResultPath(resultPath, {
+      [Kind.FIELD]: (node: FieldNode) => {
+        const args = getExportDirective(node);
+        if (args) {
+          this._exportPaths[args.as] = [...resultPath];
+        }
+      },
+      [Kind.DIRECTIVE]: (node: DirectiveNode) => {
+        if (node.name.value === exportDirective.name) {
+          return null;
+        }
+      }
+    }));
+  }
+
+  injectIntoSelectionSet(selectionSet: SelectionSetNode): SelectionSetNode {
+    // FIXME: possible conflicts
+    return {
+      ...selectionSet,
+      selections: [
+        ...selectionSet.selections,
+        {
+          kind: 'InlineFragment',
+          selectionSet: this._selectionSet,
+          // FIXME: work around for bug in graphql-js should work without
+          // see https://github.com/graphql/graphql-js/blob/master/src/validation/rules/PossibleFragmentSpreads.js#L45
+          typeCondition: this._typeCondition,
+        },
+      ],
+    };
+  }
+
+  extractArgs(rootValue: object): object {
+    const args = Object.create(null);
+    for (const [name, path] of Object.entries(this._exportPaths)) {
+      const value = extractByPath(rootValue, path);
+      if (value instanceof Error) {
+        throw value;
+      } else if (value !== undefined) {
+        args[name] = value;
+      }
+    }
+    return args;
+  }
+}
+
+function proxyRootField(
+  context: ProxyContext,
+  args: object,
+  info: GraphQLResolveInfo
+): any {
+  const { parentType, fieldName, operation } = info;
+  const originTypes = context.joinSchema.originTypesMap[parentType.name];
+  // Root type always have only one origin type
+  const { originAPI } = originTypes[0];
+
+  return context.proxyToRemote({
+    sendTo: originAPI,
+    operationType: operation.operation,
+    makeSelectionSet: (clientSelection) => selectionSetNode([{
+      kind: Kind.FIELD,
+      name: nameNode(fieldName),
+      arguments: Object.entries(args).map(([name,value]) => ({
+        kind: Kind.ARGUMENT,
+        name: nameNode(name),
+        value: jsonToAST(value),
+      })),
+      selectionSet: clientSelection,
+    }]),
+    resultPath: [fieldName],
+  }, info);
+}
+
+class ProxyOperation {
+  _sendTo: string;
+  _operationType: OperationTypeNode;
+  _resultPath: string[];
+  _defaultVarsAST: { [name: string]: ValueNode };
+  _selectionSet: SelectionSetNode;
+
+  constructor(operationDef: OperationDefinitionNode) {
+    this._sendTo = getSendDirective(operationDef)!.to;
+    this._operationType = operationDef.operation;
+    this._selectionSet = operationDef.selectionSet;
+
+    this._defaultVarsAST = {};
+    for (const varDef of (operationDef.variableDefinitions || [])) {
+      const defaultValue = varDef.defaultValue;
+      if (defaultValue) {
+        this._defaultVarsAST[varDef.variable.name.value] = defaultValue;
+      }
+    }
+
+    this._resultPath = [];
+    const currentResultPath = [];
+    visit(operationDef, visitWithResultPath(currentResultPath, {
+      [Kind.FIELD]: (node) => {
+        if (currentResultPath.length > this._resultPath.length) {
+          this._resultPath = [...currentResultPath];
+        }
+      },
+    }));
+  }
+
+  makeProxyCall(args: object): ProxyCall {
+    return {
+      sendTo: this._sendTo,
+      operationType: this._operationType,
+      resultPath: this._resultPath,
+      makeSelectionSet:
+        (clientSelection) => this._makeSelection(args, clientSelection),
+    };
+  }
+
+  _makeSelection(
+    args: object,
+    clientSelection?: SelectionSetNode
+  ): SelectionSetNode {
+    const argsAST = {
+      ...this._defaultVarsAST,
+      ...mapValues(args, value => jsonToAST(value)),
+    };
+
+    const removeNodesWithoutValue = {
+      leave(node: ASTNode) {
+        return (node['value'] == null) ? null : undefined;
+      },
+    };
+
+    return visit(this._selectionSet, {
+      [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
+        const selections = node.selections;
+        if (selections[0] && selections[0].kind === Kind.FRAGMENT_SPREAD) {
+          return clientSelection;
+        }
+      },
+      // Replace variable with AST value or delete if unspecified
+      [Kind.VARIABLE]: (node: VariableNode) => (argsAST[node.name.value] || null),
+      [Kind.OBJECT_FIELD]: removeNodesWithoutValue,
+      [Kind.ARGUMENT]: removeNodesWithoutValue,
+    });
+  }
+}
+
+function schemaToASTTypes(
+  schema: GraphQLSchema
+): TypeDefinitionNode[] {
+  const sdl = printSchema(schema);
+  const ast = parse(sdl, { noLocation: true });
+  const types = splitAST(ast).types;
+  return types.filter(type => !isBuiltinType(type.name.value));
+}
+
+function buildSchemaFromSDL(defs: SplittedAST) {
+  const sdl = makeASTDocument([
+    ...defs.schemas,
+    ...defs.types,
+  ]);
+
+  let schema = buildASTSchema(sdl);
+
+  const extensionsAST = makeASTDocument(defs.typeExtensions);
+  return extendSchema(schema, extensionsAST);
+}
+
+function addPrefixToTypeNode(
+  type: TypeDefinitionNode,
+  prefix?: string
+) {
+  if (!prefix) {
+    return type;
+  }
+
+  return {
+    ...visitTypeReferences(
+      type,
+      node => ({ ...node, name: prefixName(node.name) })
+    ),
+    name: prefixName(type.name)
+  };
+
+  function prefixName(node: NameNode): NameNode {
+    const name = node.value;
+    return isBuiltinType(name) ? node : { ...node, value: prefix + name };
+  }
+}
+
+function visitTypeReferences<T extends TypeDefinitionNode>(
+  type: T,
+  cb: (ref: NamedTypeNode) => void | false | NamedTypeNode
+): T {
+  return visit(type, {
+    [Kind.NAMED_TYPE]: cb,
+  });
+}
+
+function getTypesWithDependencies(
+  typesMap: { [typeName: string]: TypeDefinitionNode },
+  requiredTypes: string[]
+): string[] {
+  const returnTypes = [ ...requiredTypes ];
+
+  for (const typeName of returnTypes) {
+    visitTypeReferences(typesMap[typeName], ref => {
+      const refType = ref.name.value;
+      if (!returnTypes.includes(refType) && !isBuiltinType(refType)) {
+        returnTypes.push(refType);
+      }
+    });
+  }
+  return returnTypes;
+}
+
+function getExternalTypeNames(definitions: SplittedAST): string[] {
+  const seenTypes = {};
+  markTypeRefs(definitions.schemas);
+  markTypeRefs(definitions.types);
+  markTypeRefs(definitions.typeExtensions);
+
+  const ownTypes = (definitions.types || []).map(type => type.name.value);
+  return Object.keys(seenTypes).filter(type => !ownTypes.includes(type));
+
+  function markTypeRefs(defs) {
+    defs.forEach(def => visitTypeReferences(def, ref => {
+      const name = ref.name.value;
+      if (!isBuiltinType(name)) {
+        seenTypes[name] = true;
+      }
+    }));
+  }
+}

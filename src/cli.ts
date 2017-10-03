@@ -6,10 +6,11 @@ import { Source, printSchema } from 'graphql';
 
 import {
   EndpointMap,
-  ProxyContext,
-  GraphQLJoinSchema,
   getRemoteSchemas,
 } from './index';
+
+import { GraphQLJoinSchema } from './GraphQLJoinSchema';
+import { ProxyContext } from './ProxyContext';
 
 const endpoints: EndpointMap = {
   graphcool: {

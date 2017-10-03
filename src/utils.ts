@@ -7,12 +7,11 @@ import {
 } from 'lodash';
 
 import {
-  ASTNode,
   Kind,
+  ASTNode,
   NameNode,
   ValueNode,
   DocumentNode,
-  NamedTypeNode,
   SelectionNode,
   DefinitionNode,
   SelectionSetNode,
@@ -31,12 +30,7 @@ import {
   GraphQLFieldResolver,
   ExecutionResult,
 
-  parse,
-  visit,
-  printSchema,
   isAbstractType,
-  extendSchema,
-  buildASTSchema,
   getVisitFn,
 } from 'graphql';
 
@@ -136,73 +130,6 @@ export function isBuiltinType(name: string) {
   ].indexOf(name) !== -1;
 }
 
-export function addPrefixToTypeNode(
-  type: TypeDefinitionNode,
-  prefix?: string
-) {
-  if (!prefix) {
-    return type;
-  }
-
-  return {
-    ...visitTypeReferences(
-      type,
-      node => ({ ...node, name: prefixName(node.name) })
-    ),
-    name: prefixName(type.name)
-  };
-
-  function prefixName(node: NameNode): NameNode {
-    const name = node.value;
-    return isBuiltinType(name) ? node : { ...node, value: prefix + name };
-  }
-}
-
-function visitTypeReferences<T extends TypeDefinitionNode>(
-  type: T,
-  cb: (ref: NamedTypeNode) => void | false | NamedTypeNode
-): T {
-  return visit(type, {
-    [Kind.NAMED_TYPE]: cb,
-  });
-}
-
-export function getTypesWithDependencies(
-  typesMap: { [typeName: string]: TypeDefinitionNode },
-  requiredTypes: string[]
-): string[] {
-  const returnTypes = [ ...requiredTypes ];
-
-  for (const typeName of returnTypes) {
-    visitTypeReferences(typesMap[typeName], ref => {
-      const refType = ref.name.value;
-      if (!returnTypes.includes(refType) && !isBuiltinType(refType)) {
-        returnTypes.push(refType);
-      }
-    });
-  }
-  return returnTypes;
-}
-
-export function getExternalTypeNames(definitions: SplittedAST): string[] {
-  const seenTypes = {};
-  markTypeRefs(definitions.schemas);
-  markTypeRefs(definitions.types);
-  markTypeRefs(definitions.typeExtensions);
-
-  const ownTypes = (definitions.types || []).map(type => type.name.value);
-  return Object.keys(seenTypes).filter(type => !ownTypes.includes(type));
-
-  function markTypeRefs(defs) {
-    defs.forEach(def => visitTypeReferences(def, ref => {
-      const name = ref.name.value;
-      if (!isBuiltinType(name)) {
-        seenTypes[name] = true;
-      }
-    }));
-  }
-}
-
 // TODO: move to graphql-js
 export type SplittedAST = {
   schemas: SchemaDefinitionNode[],
@@ -260,27 +187,6 @@ export function makeASTDocument(definitions: DefinitionNode[]): DocumentNode {
     kind: Kind.DOCUMENT,
     definitions,
   };
-}
-
-export function schemaToASTTypes(
-  schema: GraphQLSchema
-): TypeDefinitionNode[] {
-  const sdl = printSchema(schema);
-  const ast = parse(sdl, { noLocation: true });
-  const types = splitAST(ast).types;
-  return types.filter(type => !isBuiltinType(type.name.value));
-}
-
-export function buildSchemaFromSDL(defs: SplittedAST) {
-  const sdl = makeASTDocument([
-    ...defs.schemas,
-    ...defs.types,
-  ]);
-
-  let schema = buildASTSchema(sdl);
-
-  const extensionsAST = makeASTDocument(defs.typeExtensions);
-  return extendSchema(schema, extensionsAST);
 }
 
 export function injectErrors(result: ExecutionResult): object | void {
