@@ -1,5 +1,105 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`joinSchema Merge duplicate abstract types 1`] = `
+type Bar {
+  bar: String
+}
+
+union BarOrBaz = Bar | Baz
+
+type Baz {
+  baz: String
+}
+
+type Query {
+  proxyFoo1: BarOrBaz
+  proxyFoo2: BarOrBaz
+}
+`;
+
+exports[`joinSchema Merge duplicate abstract types 2`] = `
+{
+  foo {
+    ... on Bar {
+      bar
+    }
+    ___t_test1: __typename
+  }
+}
+`;
+
+exports[`joinSchema Merge duplicate abstract types 3`] = `
+{
+  foo {
+    ... on Baz {
+      baz
+    }
+    ___t_test2: __typename
+  }
+}
+`;
+
+exports[`joinSchema Merge duplicate abstract types 4`] = `
+[
+  "\\n        query {\\n          proxyFoo1 { ... on Bar { bar } }\\n          proxyFoo2 { ... on Baz { baz } }\\n        }\\n      ",
+  {
+    "data": {
+      "proxyFoo1": {
+        "bar": "test1::Bar::bar"
+      },
+      "proxyFoo2": {
+        "baz": "test2::Baz::baz"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
+exports[`joinSchema Merge duplicate types 1`] = `
+type Foo {
+  foo: String
+}
+
+type Query {
+  proxyFoo1: Foo
+  proxyFoo2: Foo
+}
+`;
+
+exports[`joinSchema Merge duplicate types 2`] = `
+{
+  foo {
+    foo
+  }
+}
+`;
+
+exports[`joinSchema Merge duplicate types 3`] = `
+{
+  foo {
+    foo
+  }
+}
+`;
+
+exports[`joinSchema Merge duplicate types 4`] = `
+[
+  "\\n      {\\n        proxyFoo1 { foo }\\n        proxyFoo2 { foo }\\n      }\\n    ",
+  {
+    "data": {
+      "proxyFoo1": {
+        "foo": "test1::Foo::foo"
+      },
+      "proxyFoo2": {
+        "foo": "test2::Foo::foo"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
 exports[`joinSchema Prefix remote types 1`] = `
 schema {
   query: PrEfIx_Query

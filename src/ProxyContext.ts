@@ -83,7 +83,7 @@ export class ProxyContext {
     info: GraphQLResolveInfo
   ): DocumentNode {
     const sendTo = call.sendTo;
-    const nameMapper = this.joinSchema.nameMapper[call.sendTo];
+    const { joinToOrigin } = this.joinSchema;
     const seenVariables = {};
 
     const selection = mergeSelectionSets(info.fieldNodes);
@@ -102,7 +102,7 @@ export class ProxyContext {
       },
       [Kind.NAMED_TYPE]: (ref: NamedTypeNode) => {
         const typeName = ref.name.value;
-        const originName = nameMapper && nameMapper.joinToOrigin[typeName];
+        const originName = (joinToOrigin[typeName] || {})[sendTo];
         return { ...ref, name: nameNode(originName || typeName) };
       },
       [Kind.FIELD]: () => {

@@ -27,8 +27,8 @@ import {
 } from 'graphql';
 
 import {
+  isEqual,
   mapValues,
-  set as pathSet,
 } from 'lodash';
 
 import {
@@ -70,17 +70,10 @@ export type ResolveWithArgs = {
   argumentsFragment?: ArgumentsFragment;
 };
 
-type OriginTypes = { originType: GraphQLNamedType, originAPI: string }[];
-
 export class GraphQLJoinSchema {
   schema: GraphQLSchema;
-  nameMapper: {
-    [ name: string ]: {
-      joinToOrigin: { [ joinName: string ]: string };
-      originToJoin: { [ originName: string ]: string };
-    }
-  };
-  originTypesMap: { [ name: string ]: OriginTypes };
+  joinToOrigin: { [ joinName: string ]: { [ schemaName: string ]: string  } };
+  originToJoin: { [ schemaName: string ]: { [ originName: string ]: string } };
   resolveWithMap: {
     [ typeName: string ]: {
       [ fieldName: string ]: ResolveWithArgs;
@@ -97,8 +90,7 @@ export class GraphQLJoinSchema {
     // FIXME: validate remoteSchemas
 
     const joinDefs = splitAST(parse(joinIDL));
-    const extTypeRefs = getExternalTypeNames(joinDefs);
-    const remoteTypes = getRemoteTypes(remoteSchemas, extTypeRefs);
+    const remoteTypes = getRemoteTypes(remoteSchemas, joinDefs);
     this.schema = buildSchemaFromIDL({
       ...joinDefs,
       types: [
@@ -112,16 +104,17 @@ export class GraphQLJoinSchema {
       resolveType: typeResolver,
     });
 
-    this.nameMapper = {};
-    this.originTypesMap = {};
-    for (const { ast, originTypes } of remoteTypes) {
+    this.joinToOrigin = {};
+    this.originToJoin = {};
+    for (const { ast, originNames } of remoteTypes) {
       const typeName = ast.name.value;
-      this.originTypesMap[typeName] = originTypes;
 
-      for (const {originAPI, originType} of originTypes) {
-        const originName = originType.name;
-        pathSet(this.nameMapper,[originAPI, 'joinToOrigin', typeName], originName);
-        pathSet(this.nameMapper,[originAPI, 'originToJoin', originName], typeName);
+      this.joinToOrigin[typeName] = originNames;
+      for (const [originAPI, originName] of Object.entries(originNames)) {
+        this.originToJoin[originAPI] = {
+          ...this.originToJoin[originAPI],
+          [originName]: typeName,
+        };
       }
     }
 
@@ -140,15 +133,14 @@ export class GraphQLJoinSchema {
         for (const field of Object.values(type.getFields())) {
           const resolveWithArgs = getResolveWithDirective(field.astNode);
           if (resolveWithArgs) {
-            pathSet(
-              this.resolveWithMap,
-              [type.name, field.name],
-              {
+            this.resolveWithMap[type.name] = {
+              ...this.resolveWithMap[type.name],
+              [field.name]: {
                 query: operations[resolveWithArgs.query],
                 argumentsFragment: resolveWithArgs.argumentsFragment ?
                   fragments[resolveWithArgs.argumentsFragment] : undefined,
               }
-            );
+            };
           }
         }
       }
@@ -159,41 +151,54 @@ export class GraphQLJoinSchema {
 
 function getRemoteTypes(
   remoteSchemas: RemoteSchemasMap,
-  extTypeRefs: string[]
+  joinDefs: SplittedAST,
 ) {
-  const remoteTypes = [] as {ast: TypeDefinitionNode, originTypes: OriginTypes }[];
-  for (const [api, {schema, prefix = ''}] of Object.entries(remoteSchemas)) {
-    const typesMap = keyByNameNodes(schemaToASTTypes(schema));
-
+  const remoteTypes = {} as {
+    [typeName: string]: {
+      ast: TypeDefinitionNode,
+      originNames: { [schemaName: string]: string },
+    }
+  };
+  const extTypeRefs = getExternalTypeNames(joinDefs);
+  for (const [schemaName, {schema, prefix = ''}] of Object.entries(remoteSchemas)) {
     const typesToExtract = extTypeRefs
       .filter(name => name.startsWith(prefix))
-      .map(name => name.replace(prefix, ''))
-      .filter(name => typesMap[name]);
+      .map(name => name.replace(prefix, ''));
 
-    const extractedTypes = getTypesWithDependencies(typesMap, typesToExtract);
-    for (const typeName of extractedTypes) {
-      // TODO: merge types with same name and definition
-      remoteTypes.push({
-        ast: addPrefixToTypeNode(typesMap[typeName], prefix),
-        originTypes: [{
-          originType: schema.getType(typeName),
-          originAPI: api,
-        }],
-      });
+    const extractedTypes = getTypesWithDependencies(schema, typesToExtract);
+    for (const originAST of extractedTypes) {
+      const originName = originAST.name.value;
+      const joinAST = addPrefixToTypeNode(originAST, prefix)
+      const joinName = joinAST.name.value;
+      const sameType = remoteTypes[joinName];
+      if (sameType) {
+        if (!isEqual(sameType.ast, joinAST)) {
+          // FIXME: better errors
+          throw Error(`Type confict for ${joinName}`);
+        }
+        sameType.originNames[schemaName] = originName;
+      } else {
+        remoteTypes[joinName] = {
+          ast: joinAST,
+          originNames: {
+            [schemaName]: originName,
+          },
+        };
+      }
     }
   }
-  return remoteTypes;
+  return Object.values(remoteTypes);
 }
 
 function typeResolver(
   rootValue: object,
   context: ProxyContext
 ) {
-  const {nameMapper} = context.joinSchema;
-  for (const [schemaName, mapper] of Object.entries(nameMapper)) {
+  const {originToJoin} = context.joinSchema;
+  for (const [schemaName, mapper] of Object.entries(originToJoin)) {
     const typename = rootValue[typeNameAlias(schemaName)];
     if (typename) {
-      return mapper.originToJoin[typename];
+      return mapper[typename];
     }
   }
   throw Error('Can not map rootValue to typename');
@@ -290,9 +295,8 @@ function proxyRootField(
   info: GraphQLResolveInfo
 ): any {
   const { parentType, fieldName, operation } = info;
-  const originTypes = context.joinSchema.originTypesMap[parentType.name];
   // Root type always have only one origin type
-  const { originAPI } = originTypes[0];
+  const originAPI = Object.keys(context.joinSchema.joinToOrigin[parentType.name])[0];
 
   return context.proxyToRemote({
     sendTo: originAPI,
@@ -435,10 +439,14 @@ function visitTypeReferences<T extends TypeDefinitionNode>(
 }
 
 function getTypesWithDependencies(
-  typesMap: { [typeName: string]: TypeDefinitionNode },
+  schema: GraphQLSchema,
   requiredTypes: string[]
-): string[] {
-  const returnTypes = [ ...requiredTypes ];
+): TypeDefinitionNode[] {
+  const typesMap = keyByNameNodes(schemaToASTTypes(schema));
+
+  const returnTypes = [
+    ...requiredTypes.filter(typeName => typesMap[typeName])
+  ];
 
   for (const typeName of returnTypes) {
     visitTypeReferences(typesMap[typeName], ref => {
@@ -448,7 +456,7 @@ function getTypesWithDependencies(
       }
     });
   }
-  return returnTypes;
+  return returnTypes.map(typeName => typesMap[typeName]);
 }
 
 function getExternalTypeNames(definitions: SplittedAST): string[] {

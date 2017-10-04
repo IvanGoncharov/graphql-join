@@ -67,4 +67,88 @@ describe('joinSchema', () => {
     );
   });
 
+  test('Merge duplicate types', async () => {
+    const execute = testJoin(
+      {
+        test1: `
+          type Foo { foo: String }
+          type Query { foo: Foo }
+        `,
+        test2: `
+          type Foo { foo: String }
+          type Query { foo: Foo }
+        `,
+      }, `
+        type Query {
+          proxyFoo1: Foo @resolveWith(query: "foo1")
+          proxyFoo2: Foo @resolveWith(query: "foo2")
+        }
+        query foo1 @send(to: "test1") {
+          foo {
+            ...CLIENT_SELECTION
+          }
+        }
+        query foo2 @send(to: "test2") {
+          foo {
+            ...CLIENT_SELECTION
+          }
+        }
+      `
+    );
+
+    await execute(`
+      {
+        proxyFoo1 { foo }
+        proxyFoo2 { foo }
+      }
+    `);
+  });
+
+  test('Merge duplicate abstract types', async () => {
+    const idl = `
+      type Query { foo: BarOrBaz }
+      union BarOrBaz = Bar | Baz
+      type Bar { bar: String }
+      type Baz { baz: String }
+    `;
+    const execute = testJoin(
+      {
+        test1: idl,
+        test2: idl,
+      }, `
+        type Query {
+          proxyFoo1: BarOrBaz @resolveWith(query: "foo1")
+          proxyFoo2: BarOrBaz @resolveWith(query: "foo2")
+        }
+        query foo1 @send(to: "test1") {
+          foo {
+            ...CLIENT_SELECTION
+          }
+        }
+        query foo2 @send(to: "test2") {
+          foo {
+            ...CLIENT_SELECTION
+          }
+        }
+      `
+    );
+
+    await execute(
+      `
+        query {
+          proxyFoo1 { ... on Bar { bar } }
+          proxyFoo2 { ... on Baz { baz } }
+        }
+      `,
+      {
+        test1: { data: {
+          foo: { ___t_test1: 'Bar', bar: 'test1::Bar::bar' }
+        }},
+        test2: { data: {
+          foo: { ___t_test2: 'Baz', baz: 'test2::Baz::baz' }
+        }},
+      }
+    );
+  });
+
 });
