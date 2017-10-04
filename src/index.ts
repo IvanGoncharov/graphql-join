@@ -74,6 +74,7 @@ function validation() {
   // TODO:
   // JOIN AST:
   //   - validate that all directive known and locations are correct
+  //   - type refs should be resolved without conflicts
   //   - no specified directives inside join AST
   //   - all references to remote types have no conficts
   //   - all fields inside extends and type defs should have @resolveWith

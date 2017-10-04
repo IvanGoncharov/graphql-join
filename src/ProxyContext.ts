@@ -1,5 +1,6 @@
 import {
   Kind,
+  ASTNode,
   NameNode,
   VariableNode,
   NamedTypeNode,
@@ -126,7 +127,7 @@ export class ProxyContext {
         };
       },
       [Kind.SELECTION_SET]: {
-        leave: (node: SelectionSetNode) => {
+        leave: (node: SelectionSetNode, _, parent?: ASTNode) => {
           const type = typeInfo.getParentType();
           // TODO: should we also handle Interfaces and Unions here?
           if (type instanceof GraphQLObjectType) {
@@ -138,8 +139,12 @@ export class ProxyContext {
             }
           }
 
+          if (parent && parent.kind === Kind.FIELD && isAbstractType(type)) {
+            return injectTypename(node, typeNameAlias(sendTo));
+          }
+
           // FIXME: recursive remove empty selection
-          if (isAbstractType(type) || node.selections.length === 0) {
+          if (node.selections.length === 0) {
             return injectTypename(node, typeNameAlias(sendTo));
           }
           return node;

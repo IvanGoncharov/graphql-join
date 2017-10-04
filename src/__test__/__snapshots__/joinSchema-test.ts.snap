@@ -23,7 +23,6 @@ exports[`joinSchema Merge duplicate abstract types 2`] = `
     ... on Bar {
       bar
     }
-    ___t_test1: __typename
   }
 }
 `;
@@ -34,7 +33,6 @@ exports[`joinSchema Merge duplicate abstract types 3`] = `
     ... on Baz {
       baz
     }
-    ___t_test2: __typename
   }
 }
 `;
@@ -129,7 +127,6 @@ exports[`joinSchema Prefix remote types 2`] = `
     ... on Baz {
       baz
     }
-    ___t_test: __typename
   }
 }
 `;
