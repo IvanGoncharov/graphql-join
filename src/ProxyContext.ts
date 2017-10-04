@@ -139,13 +139,13 @@ export class ProxyContext {
             }
           }
 
-          if (parent && parent.kind === Kind.FIELD && isAbstractType(type)) {
+          if ((!parent || parent.kind === Kind.FIELD) && isAbstractType(type)) {
             return injectTypename(node, typeNameAlias(sendTo));
           }
 
           // FIXME: recursive remove empty selection
           if (node.selections.length === 0) {
-            return injectTypename(node, typeNameAlias(sendTo));
+            return injectTypename(node);
           }
           return node;
         }
