@@ -9,6 +9,8 @@ import {
   GraphQLResolveInfo,
   ExecutionArgs,
   ExecutionResult,
+  isLeafType,
+  getNamedType,
 
   graphql,
   parse,
@@ -39,9 +41,13 @@ expect.addSnapshotSerializer({
 
 function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
   return (
-    _1, args: object, _3,
-    {fieldName, parentType}: GraphQLResolveInfo
+    rootValue, args: object, _3,
+    {fieldName, parentType, returnType}: GraphQLResolveInfo
   ) => {
+    if ((typeof rootValue === 'object') && rootValue[fieldName]) {
+      return rootValue[fieldName];
+    }
+
     let result = `${schemaName}::${parentType.name}::${fieldName}`;
     if (Object.keys(args).length !== 0) {
       result += `;args=${JSON.stringify(args)}`
@@ -50,7 +56,7 @@ function fakeFieldResolver(schemaName: string): GraphQLFieldResolver<any,any> {
   }
 }
 
-function makeProxy(schemaName: string, schema: GraphQLSchema) {
+function makeProxy(schemaName: string, schema: GraphQLSchema, rootValue?: any) {
   return (queryAST: DocumentNode, variableValues?: object) => {
     const query = print(queryAST);
     expect(query).toMatchSnapshot();
@@ -59,6 +65,7 @@ function makeProxy(schemaName: string, schema: GraphQLSchema) {
     return graphql({
       schema,
       source: new Source(query, 'Send to ' + schemaName),
+      rootValue,
       variableValues,
       fieldResolver: fakeFieldResolver(schemaName),
     });
@@ -87,9 +94,16 @@ export function testJoin(testSchemas: TestSchemasMap, joinIDL: string) {
   expect(schema).toBeInstanceOf(GraphQLSchema);
   expect(printSchema(schema)).toMatchSnapshot();
   return async (
-    query: string | { query: string, variableValues: object },
-    results?: { [schemaName: string]: ExecutionResult }
+    query: string | {
+      query: string,
+      variableValues?: object
+      rootValues?: { [schemaName: string]: any }
+      results?: { [schemaName: string]: ExecutionResult }
+    },
   ) => {
+    const queryObj = typeof query === 'string' ? { query: query } : query;
+    const { results, rootValues } = queryObj;
+
     const proxyFns = _.mapValues(remoteSchemas, ({schema}, name) => {
       if (results && results[name]) {
         return (queryAST) => {
@@ -98,11 +112,10 @@ export function testJoin(testSchemas: TestSchemasMap, joinIDL: string) {
           return Promise.resolve(results[name])
         };
       }
-      return makeProxy(name, schema)
+      const rootValue = rootValues && rootValues[name];
+      return makeProxy(name, schema, rootValue)
     });
 
-    const queryObj = typeof query === 'string' ?
-      { query: query, variableValues: {} } : query;
     const result = await executeQuery({
       schema,
       document: parse(new Source(queryObj.query, 'ClientQuery')),
@@ -111,7 +124,7 @@ export function testJoin(testSchemas: TestSchemasMap, joinIDL: string) {
     });
 
     expect([
-      query,
+      queryObj.query,
       resultToJSON(result),
     ]).toMatchSnapshot();
   };

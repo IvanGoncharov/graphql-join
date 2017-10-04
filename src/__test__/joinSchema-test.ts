@@ -54,17 +54,17 @@ describe('joinSchema', () => {
       'schema { query: PrEfIx_Query }'
     );
 
-    await execute(
-      `{
+    await execute({
+      query: `{
         foo {
           ... on PrEfIx_Bar { bar }
           ... on PrEfIx_Baz { baz }
         }
       }`,
-      { test: { data: {
-        foo: { ___t_test: 'Baz', baz: 'test::Baz::baz' }
-      }}}
-    );
+      rootValues: { test: {
+        foo: { __typename: 'Baz' }
+      }}
+    });
   });
 
   test('Merge duplicate types', async () => {
@@ -133,22 +133,22 @@ describe('joinSchema', () => {
       `
     );
 
-    await execute(
-      `
+    await execute({
+      query: `
         query {
           proxyFoo1 { ... on Bar { bar } }
           proxyFoo2 { ... on Baz { baz } }
         }
       `,
-      {
-        test1: { data: {
-          foo: { ___t_test1: 'Bar', bar: 'test1::Bar::bar' }
-        }},
-        test2: { data: {
-          foo: { ___t_test2: 'Baz', baz: 'test2::Baz::baz' }
-        }},
+      rootValues: {
+        test1: {
+          foo: { __typename: 'Bar' }
+        },
+        test2: {
+          foo: { __typename: 'Baz' }
+        },
       }
-    );
+    });
   });
 
 });

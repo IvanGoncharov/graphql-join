@@ -220,12 +220,7 @@ query ($testVar: String) {
 
 exports[`complex queries variable in client query 2`] = `
 [
-  {
-    "query": "query ($testVar: String) {\\n        foo {\\n          bar {\\n            baz(testArg: $testVar)\\n          }\\n        }\\n      }",
-    "variableValues": {
-      "testVar": "testValue"
-    }
-  },
+  "query ($testVar: String) {\\n        foo {\\n          bar {\\n            baz(testArg: $testVar)\\n          }\\n        }\\n      }",
   {
     "data": {
       "foo": {

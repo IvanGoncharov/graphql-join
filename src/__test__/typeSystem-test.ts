@@ -20,14 +20,15 @@ describe('type system', () => {
       }
     `);
 
-    await execute('{ foo }', { test: {
-      data: {
+    await execute({
+      query: '{ foo }',
+      rootValues: { test: {
         foo: [
           [{bar: 'a'}, {bar: 'b'}],
           [{bar: 'c'}]
         ],
-      }
-    }});
+      }},
+    });
   });
 
   test('arrays of objects with arrays in response type', async () => {
@@ -51,8 +52,9 @@ describe('type system', () => {
       }
     `);
 
-    await execute('{ foo }', { test: {
-      data: {
+    await execute({
+      query: '{ foo }',
+      rootValues: { test: {
         foo: [
           {
             bar: [{baz: 'a'}, {baz: 'b'}],
@@ -61,7 +63,7 @@ describe('type system', () => {
             bar: [{baz: 'c'}]
           },
         ],
-      }
-    }});
+      }},
+    });
   });
 });
