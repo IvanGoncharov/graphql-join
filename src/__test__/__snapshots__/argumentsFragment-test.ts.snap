@@ -1,5 +1,46 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 1`] = `
+type Foo {
+  bar(barArg: String): String
+  baz: String
+}
+
+type Query {
+  foo: Foo
+}
+`;
+
+exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 2`] = `
+{
+  foo {
+    bar(barArg: "ClientValue")
+    ___f_BazArgs_bar: bar(barArg: "FragmentValue")
+  }
+}
+`;
+
+exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 3`] = `
+{
+  baz(barValue: "test1::Foo::bar;args={\\"barArg\\":\\"FragmentValue\\"}")
+}
+`;
+
+exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 4`] = `
+[
+  "\\n      {\\n        foo {\\n          bar(barArg: \\"ClientValue\\")\\n          baz\\n        }\\n      }\\n    ",
+  {
+    "data": {
+      "foo": {
+        "bar": "test1::Foo::bar;args={\\"barArg\\":\\"ClientValue\\"}",
+        "baz": "test2::Query::baz;args={\\"barValue\\":\\"test1::Foo::bar;args={\\\\\\"barArg\\\\\\":\\\\\\"FragmentValue\\\\\\"}\\"}"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
 exports[`arguments fragment tests get argument from fragment 1`] = `
 schema {
   query: Query1
@@ -18,9 +59,7 @@ type TestType {
 exports[`arguments fragment tests get argument from fragment 2`] = `
 {
   testObj {
-    ... on TestType {
-      foo
-    }
+    ___f_FooArg_foo: foo
   }
 }
 `;

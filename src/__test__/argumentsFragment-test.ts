@@ -33,4 +33,44 @@ describe('arguments fragment tests', () => {
     );
     await execute('{ testObj { bar } }');
   });
+
+  test('conflicting fields in argumentsFragment and client selection', async () => {
+    const execute = testJoin({
+      test1: `
+        type Foo {
+          bar(barArg: String): String
+        }
+        type Query { foo: Foo }
+      `,
+      test2: `
+        type Query { baz(barValue: String): String }
+      `,
+    }, `
+      type Query {
+        foo: Foo @resolveWith(query: "foo")
+      }
+      query foo @send(to: "test1") {
+        foo { ...CLIENT_SELECTION }
+      }
+
+      extend type Foo {
+        baz: String @resolveWith(query: "baz", argumentsFragment: "BazArgs")
+      }
+      fragment BazArgs on Foo {
+        bar(barArg: "FragmentValue") @export(as: "barValue")
+      }
+      query baz($barValue: String) @send(to: "test2") {
+        baz(barValue: $barValue)
+      }
+    `);
+    await execute(`
+      {
+        foo {
+          bar(barArg: "ClientValue")
+          baz
+        }
+      }
+    `);
+  });
+
 });

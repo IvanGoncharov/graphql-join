@@ -95,6 +95,7 @@ function validation() {
   //   - no field alliases
   //   - forbid @skip/@include
   //   - TEMPORARY: fragment shouldn't contain fields with @resolveWith
+  //   - should be used only on objects which is equal or inherate from type condition
   // operations:
   //   - only query and mutation no subscription
   //   - mutation should be used only on fields in mutation root

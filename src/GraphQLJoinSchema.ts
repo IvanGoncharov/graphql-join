@@ -56,6 +56,7 @@ import {
 
   prefixAlias,
   typeNameAlias,
+  prefixTopLevelFields,
 } from './utils';
 
 export type RemoteSchema = {
@@ -238,10 +239,10 @@ class ArgumentsFragment {
   _typeCondition: NamedTypeNode;
 
   constructor(fragment: FragmentDefinitionNode) {
-    const { typeCondition, selectionSet } = fragment;
-    this._typeCondition = typeCondition;
-
     this._exportPaths = {};
+
+    const fieldPrefix = `___f_${fragment.name.value}_`;
+    const selectionSet = prefixTopLevelFields(fragment.selectionSet, fieldPrefix);
     const resultPath = [];
     this._selectionSet = visit(selectionSet, visitWithResultPath(resultPath, {
       [Kind.FIELD]: (node: FieldNode) => {
@@ -259,20 +260,10 @@ class ArgumentsFragment {
   }
 
   injectIntoSelectionSet(selectionSet: SelectionSetNode): SelectionSetNode {
-    // FIXME: possible conflicts
-    return {
-      ...selectionSet,
-      selections: [
-        ...selectionSet.selections,
-        {
-          kind: 'InlineFragment',
-          selectionSet: this._selectionSet,
-          // FIXME: work around for bug in graphql-js should work without
-          // see https://github.com/graphql/graphql-js/blob/master/src/validation/rules/PossibleFragmentSpreads.js#L45
-          typeCondition: this._typeCondition,
-        },
-      ],
-    };
+    return selectionSetNode([
+      ...selectionSet.selections,
+      ...this._selectionSet.selections,
+    ]);
   }
 
   extractArgs(rootValue: object): object {

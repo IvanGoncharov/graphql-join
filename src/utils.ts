@@ -326,3 +326,26 @@ export function prefixAlias(alias: string): string {
 export function typeNameAlias(schemaName: string): string {
   return '___t_' + schemaName;
 }
+
+export function prefixTopLevelFields(
+  selectionSet: SelectionSetNode,
+  prefix: string
+): SelectionSetNode {
+  return selectionSetNode(selectionSet.selections.map(selection => {
+    switch (selection.kind) {
+      case Kind.FIELD:
+        const resultName = (selection.alias || selection.name).value
+        return {
+          ...selection,
+          alias: nameNode(prefix + resultName),
+        };
+      case Kind.INLINE_FRAGMENT:
+        return {
+          ...selection,
+          selectionSet: prefixTopLevelFields(selection.selectionSet, prefix),
+        };
+      case Kind.FRAGMENT_SPREAD:
+        throw new Error('Unexpected fragment spread');
+    }
+  }));
+}
