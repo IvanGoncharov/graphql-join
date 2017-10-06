@@ -17,10 +17,10 @@ type Query {
 `;
 
 exports[`complex queries @skip/@include in client query 1`] = `
-query ($true: Boolean = true, $false: Boolean = false) {
+{
   foo {
-    bar @skip(if: $false) {
-      baz @include(if: $true)
+    bar @skip(if: false) {
+      baz @include(if: true)
     }
   }
 }
@@ -74,10 +74,10 @@ exports[`complex queries cross aliased fields in client query 2`] = `
 `;
 
 exports[`complex queries default variable value in client query 1`] = `
-query ($testVar: String = "defaultValue") {
+{
   foo {
     bar {
-      baz(testArg: $testVar)
+      baz(testArg: "defaultValue")
     }
   }
 }
@@ -183,10 +183,10 @@ exports[`complex queries fragments in client query 2`] = `
 `;
 
 exports[`complex queries undefined variable in client query 1`] = `
-query ($testVar: String) {
+{
   foo {
     bar {
-      baz(testArg: $testVar)
+      baz
     }
   }
 }
@@ -209,10 +209,10 @@ exports[`complex queries undefined variable in client query 2`] = `
 `;
 
 exports[`complex queries variable in client query 1`] = `
-query ($testVar: String) {
+{
   foo {
     bar {
-      baz(testArg: $testVar)
+      baz(testArg: "testValue")
     }
   }
 }

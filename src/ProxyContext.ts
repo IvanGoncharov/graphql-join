@@ -39,6 +39,7 @@ import {
 
   prefixAlias,
   typeNameAlias,
+  makeInlineVariablesVisitor,
 } from './utils';
 import { GraphQLJoinSchema, ResolveWithArgs } from './GraphQLJoinSchema';
 
@@ -85,7 +86,6 @@ export class ProxyContext {
   ): DocumentNode {
     const sendTo = call.sendTo;
     const { joinToOrigin } = this.joinSchema;
-    const seenVariables = {};
 
     const selection = mergeSelectionSets(info.fieldNodes);
     const typeInfo = new TypeInfo(info.schema);
@@ -93,9 +93,7 @@ export class ProxyContext {
     typeInfo['_typeStack'].push(rootType);
 
     const clientSelection = visit(selection, visitWithTypeInfo(typeInfo, {
-      [Kind.VARIABLE]: (node: VariableNode) => {
-        seenVariables[node.name.value] = true;
-      },
+      ...makeInlineVariablesVisitor(info.variableValues),
       [Kind.NAME]: (node: NameNode, key: string) => {
         if (key === 'alias') {
           return nameNode(prefixAlias(node.value));
@@ -156,9 +154,6 @@ export class ProxyContext {
       kind: Kind.OPERATION_DEFINITION,
       operation: call.operationType,
       selectionSet: call.makeSelectionSet(clientSelection),
-      variableDefinitions: (info.operation.variableDefinitions || []).filter(
-        (varDef: VariableDefinitionNode) => seenVariables[varDef.variable.name.value]
-      ),
     }]);
   }
 }
