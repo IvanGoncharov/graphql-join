@@ -5,41 +5,65 @@ type Bar {
   bar: String
 }
 
+type Baz {
+  baz: String
+}
+
 type Query {
-  foo: Bar
+  fooBar: Bar
+  fooBaz: Baz
 }
 `;
 
 exports[`proxy errors error with path 1`] = `
 {
-  foo {
+  _0_fooBar: fooBar {
     bar
+  }
+  _1_fooBaz: fooBaz {
+    baz
   }
 }
 `;
 
 exports[`proxy errors error with path 2`] = `
 [
-  "{ foo { bar } }",
+  "\\n        {\\n          fooBar { bar }\\n          fooBaz { baz }\\n        }\\n      ",
   {
     "errors": [
       {
-        "message": "error with path",
+        "message": "bar error",
         "locations": [
           {
-            "line": 1,
-            "column": 9
+            "line": 3,
+            "column": 20
           }
         ],
         "path": [
-          "foo",
+          "fooBar",
           "bar"
+        ]
+      },
+      {
+        "message": "baz error",
+        "locations": [
+          {
+            "line": 4,
+            "column": 20
+          }
+        ],
+        "path": [
+          "fooBaz",
+          "baz"
         ]
       }
     ],
     "data": {
-      "foo": {
+      "fooBar": {
         "bar": null
+      },
+      "fooBaz": {
+        "baz": null
       }
     }
   }
@@ -48,32 +72,48 @@ exports[`proxy errors error with path 2`] = `
 
 exports[`proxy errors global error 1`] = `
 {
-  foo {
+  _0_fooBar: fooBar {
     bar
+  }
+  _1_fooBaz: fooBaz {
+    baz
   }
 }
 `;
 
 exports[`proxy errors global error 2`] = `
 [
-  "{ foo { bar } }",
+  "\\n        {\\n          fooBar { bar }\\n          fooBaz { baz }\\n        }\\n      ",
   {
     "errors": [
       {
         "message": "global error",
         "locations": [
           {
-            "line": 1,
-            "column": 3
+            "line": 3,
+            "column": 11
           }
         ],
         "path": [
-          "foo"
+          "fooBar"
+        ]
+      },
+      {
+        "message": "global error",
+        "locations": [
+          {
+            "line": 4,
+            "column": 11
+          }
+        ],
+        "path": [
+          "fooBaz"
         ]
       }
     ],
     "data": {
-      "foo": null
+      "fooBar": null,
+      "fooBaz": null
     }
   }
 ]
@@ -81,32 +121,48 @@ exports[`proxy errors global error 2`] = `
 
 exports[`proxy errors multiple global errors 1`] = `
 {
-  foo {
+  _0_fooBar: fooBar {
     bar
+  }
+  _1_fooBaz: fooBaz {
+    baz
   }
 }
 `;
 
 exports[`proxy errors multiple global errors 2`] = `
 [
-  "{ foo { bar } }",
+  "\\n        {\\n          fooBar { bar }\\n          fooBaz { baz }\\n        }\\n      ",
   {
     "errors": [
       {
         "message": "first global error\\nsecond global error",
         "locations": [
           {
-            "line": 1,
-            "column": 3
+            "line": 3,
+            "column": 11
           }
         ],
         "path": [
-          "foo"
+          "fooBar"
+        ]
+      },
+      {
+        "message": "first global error\\nsecond global error",
+        "locations": [
+          {
+            "line": 4,
+            "column": 11
+          }
+        ],
+        "path": [
+          "fooBaz"
         ]
       }
     ],
     "data": {
-      "foo": null
+      "fooBar": null,
+      "fooBaz": null
     }
   }
 ]

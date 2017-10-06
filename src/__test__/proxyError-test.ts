@@ -4,14 +4,20 @@ import { testJoin } from './testUtils';
 describe('proxy errors', () => {
   const execute = testJoin({
     test: `
-      type Query { foo: Bar }
+      type Query { fooBar: Bar, fooBaz: Baz }
       type Bar { bar: String }
+      type Baz { baz: String }
     `,
   },'schema { query: Query }');
 
   test('global error', async () => {
     await execute({
-      query: '{ foo { bar } }',
+      query: `
+        {
+          fooBar { bar }
+          fooBaz { baz }
+        }
+      `,
       results: { test: {
         errors: [ new GraphQLError('global error') ],
       }},
@@ -19,7 +25,12 @@ describe('proxy errors', () => {
   });
   test('multiple global errors', async () => {
     await execute({
-      query: '{ foo { bar } }',
+      query: `
+        {
+          fooBar { bar }
+          fooBaz { baz }
+        }
+      `,
       results: { test: {
         errors: [
           new GraphQLError('first global error'),
@@ -30,10 +41,18 @@ describe('proxy errors', () => {
   });
   test('error with path', async () => {
     await execute({
-      query: '{ foo { bar } }',
+      query: `
+        {
+          fooBar { bar }
+          fooBaz { baz }
+        }
+      `,
       rootValues: { test: {
-        foo: {
-          bar: new Error('error with path'),
+        fooBar: {
+          bar: new Error('bar error'),
+        },
+        fooBaz: {
+          baz: new Error('baz error'),
         },
       }},
     });
