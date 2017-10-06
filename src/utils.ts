@@ -11,6 +11,7 @@ import {
   ASTNode,
   NameNode,
   ValueNode,
+  VariableNode,
   DocumentNode,
   SelectionNode,
   DefinitionNode,
@@ -68,7 +69,7 @@ function stubType(
 }
 
 // TODO: Merge into graphql-js
-function astToJSON(ast: ValueNode): any {
+export function astToJSON(ast: ValueNode): any {
   switch (ast.kind) {
     case Kind.NULL:
       return null;
@@ -348,4 +349,30 @@ export function prefixTopLevelFields(
         throw new Error('Unexpected fragment spread');
     }
   }));
+}
+
+// Replace variable with AST value or delete if unspecified
+export function makeInlineVariablesVisitor(variableValues: object): any {
+  const astValuesCache = {};
+  const removeNodesWithoutValue = {
+    leave(node: ASTNode) {
+      return (node['value'] == null) ? null : undefined;
+    },
+  };
+
+  return {
+    [Kind.VARIABLE]: (node: VariableNode) => {
+      const varName = node.name.value;
+      if (astValuesCache[varName]) {
+        return astValuesCache[varName];
+      }
+      const value = variableValues[varName];
+      if (value === undefined) {
+        return null;
+      }
+      return (astValuesCache[varName] = jsonToAST(value));
+    },
+    [Kind.OBJECT_FIELD]: removeNodesWithoutValue,
+    [Kind.ARGUMENT]: removeNodesWithoutValue,
+  };
 }

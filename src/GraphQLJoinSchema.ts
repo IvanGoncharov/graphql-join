@@ -5,7 +5,6 @@ import {
   NameNode,
   ValueNode,
   FieldNode,
-  VariableNode,
   NamedTypeNode,
   DirectiveNode,
   SelectionSetNode,
@@ -41,6 +40,7 @@ import {
 import { ProxyCall, ProxyContext } from './ProxyContext';
 
 import {
+  astToJSON,
   isBuiltinType,
   keyByNameNodes,
   stubSchema,
@@ -57,6 +57,7 @@ import {
   prefixAlias,
   typeNameAlias,
   prefixTopLevelFields,
+  makeInlineVariablesVisitor,
 } from './utils';
 
 export type RemoteSchema = {
@@ -310,7 +311,7 @@ class ProxyOperation {
   _sendTo: string;
   _operationType: OperationTypeNode;
   _resultPath: string[];
-  _defaultVarsAST: { [name: string]: ValueNode };
+  _defaultVars: object;
   _selectionSet: SelectionSetNode;
 
   constructor(operationDef: OperationDefinitionNode) {
@@ -318,11 +319,12 @@ class ProxyOperation {
     this._operationType = operationDef.operation;
     this._selectionSet = operationDef.selectionSet;
 
-    this._defaultVarsAST = {};
+    this._defaultVars = {};
     for (const varDef of (operationDef.variableDefinitions || [])) {
+      const varName = varDef.variable.name.value;
       const defaultValue = varDef.defaultValue;
       if (defaultValue) {
-        this._defaultVarsAST[varDef.variable.name.value] = defaultValue;
+        this._defaultVars[varName] = astToJSON(defaultValue);
       }
     }
 
@@ -351,28 +353,17 @@ class ProxyOperation {
     args: object,
     clientSelection?: SelectionSetNode
   ): SelectionSetNode {
-    const argsAST = {
-      ...this._defaultVarsAST,
-      ...mapValues(args, value => jsonToAST(value)),
-    };
-
-    const removeNodesWithoutValue = {
-      leave(node: ASTNode) {
-        return (node['value'] == null) ? null : undefined;
-      },
-    };
-
     return visit(this._selectionSet, {
+      ...makeInlineVariablesVisitor({
+        ...this._defaultVars,
+        ...args,
+      }),
       [Kind.SELECTION_SET]: (node: SelectionSetNode) => {
         const selections = node.selections;
         if (selections[0] && selections[0].kind === Kind.FRAGMENT_SPREAD) {
           return clientSelection;
         }
       },
-      // Replace variable with AST value or delete if unspecified
-      [Kind.VARIABLE]: (node: VariableNode) => (argsAST[node.name.value] || null),
-      [Kind.OBJECT_FIELD]: removeNodesWithoutValue,
-      [Kind.ARGUMENT]: removeNodesWithoutValue,
     });
   }
 }
