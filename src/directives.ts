@@ -23,8 +23,12 @@ const directiveIDL = `
 
   directive @resolveWith(
     query: String!,
-    argumentsFragment: String
+    extraArgs: ExtraArgs,
   ) on FIELD_DEFINITION
+
+  input ExtraArgs {
+    fromFragment: String
+  }
 
   # Dummy type
   type Query {
@@ -50,8 +54,9 @@ export const sendDirective = directives['send'];
 export const getSendDirective = buildGetter<{ to: string }>(sendDirective);
 
 export const resolveWithDirective = directives['resolveWith'];
-export const getResolveWithDirective =
-  buildGetter<{ query: string, argumentsFragment?: string }>(resolveWithDirective);
+export const getResolveWithDirective = buildGetter<
+  { query: string, extraArgs?: { fromFragment?: string } }
+>(resolveWithDirective);
 
 export function validateDirectives(ast: DocumentNode): void {
   // FIXME: check that there no query arguments inside directive values

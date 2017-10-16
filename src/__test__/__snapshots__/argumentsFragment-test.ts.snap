@@ -1,6 +1,6 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 1`] = `
+exports[`arguments fragment tests conflicting fields in fromFragment and client selection 1`] = `
 type Foo {
   bar(barArg: String): String
   baz: String
@@ -11,7 +11,7 @@ type Query {
 }
 `;
 
-exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 2`] = `
+exports[`arguments fragment tests conflicting fields in fromFragment and client selection 2`] = `
 {
   foo {
     bar(barArg: "ClientValue")
@@ -20,13 +20,13 @@ exports[`arguments fragment tests conflicting fields in argumentsFragment and cl
 }
 `;
 
-exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 3`] = `
+exports[`arguments fragment tests conflicting fields in fromFragment and client selection 3`] = `
 {
   baz(barValue: "test1::Foo::bar;args={\\"barArg\\":\\"FragmentValue\\"}")
 }
 `;
 
-exports[`arguments fragment tests conflicting fields in argumentsFragment and client selection 4`] = `
+exports[`arguments fragment tests conflicting fields in fromFragment and client selection 4`] = `
 [
   "\\n      {\\n        foo {\\n          bar(barArg: \\"ClientValue\\")\\n          baz\\n        }\\n      }\\n    ",
   {

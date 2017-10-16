@@ -135,12 +135,14 @@ export class GraphQLJoinSchema {
         for (const field of Object.values(type.getFields())) {
           const resolveWithArgs = getResolveWithDirective(field.astNode);
           if (resolveWithArgs) {
+            const { query, extraArgs } = resolveWithArgs;
+            const argsFragment = extraArgs && extraArgs.fromFragment;
             this.resolveWithMap[type.name] = {
               ...this.resolveWithMap[type.name],
               [field.name]: {
-                query: operations[resolveWithArgs.query],
-                argumentsFragment: resolveWithArgs.argumentsFragment ?
-                  fragments[resolveWithArgs.argumentsFragment] : undefined,
+                query: operations[query],
+                argumentsFragment:
+                  argsFragment !== undefined ? fragments[argsFragment] : undefined,
               }
             };
           }

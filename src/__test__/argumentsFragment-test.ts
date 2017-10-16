@@ -21,7 +21,7 @@ describe('arguments fragment tests', () => {
       }, `
        schema { query: Query1 }
        extend type TestType {
-         bar: String @resolveWith(query: "bar", argumentsFragment: "FooArg")
+         bar: String @resolveWith(query: "bar", extraArgs: { fromFragment: "FooArg" })
        }
        query bar($foo: String) @send(to: "test2") {
          bar(fooArg:$foo)
@@ -34,7 +34,7 @@ describe('arguments fragment tests', () => {
     await execute('{ testObj { bar } }');
   });
 
-  test('conflicting fields in argumentsFragment and client selection', async () => {
+  test('conflicting fields in fromFragment and client selection', async () => {
     const execute = testJoin({
       test1: `
         type Foo {
@@ -54,7 +54,7 @@ describe('arguments fragment tests', () => {
       }
 
       extend type Foo {
-        baz: String @resolveWith(query: "baz", argumentsFragment: "BazArgs")
+        baz: String @resolveWith(query: "baz", extraArgs: { fromFragment: "BazArgs" })
       }
       fragment BazArgs on Foo {
         bar(barArg: "FragmentValue") @export(as: "barValue")
