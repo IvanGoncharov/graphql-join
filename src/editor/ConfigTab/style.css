@@ -1,0 +1,58 @@
+.card {
+  /* Add shadows to create the "card" effect */
+  box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+  transition: 0.3s;
+  display: inline-block;
+  width: 22%;
+  padding: 10px;
+  font-size: 30px;
+  text-align: center;
+  color: #59155a;
+  cursor: pointer;
+  box-sizing: border-box;
+  font-size: 20px;
+}
+
+.card.-active {
+  background: #7a467b;
+  color: white;
+}
+
+/* On mouse-over, add a deeper shadow */
+.card:hover {
+  box-shadow: 0 8px 16px 0 rgba(0,0,0,0.2);
+}
+
+.presets {
+  display: flex;
+  justify-content: space-between
+}
+
+table.fields {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.fields td {
+  padding: 10px;
+  vertical-align: top;
+}
+
+.fields td > input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.header {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.header input {
+  width: 22%;
+}
+
+.new-header {
+  margin-bottom: 10px;
+}

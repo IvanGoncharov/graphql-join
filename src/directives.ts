@@ -17,7 +17,7 @@ import {
   getDirectiveValues,
 } from 'graphql';
 
-const directiveIDL = `
+export const directiveIDL = `
   directive @export(as: String!) on FIELD
   directive @send(to: String!) on QUERY
 

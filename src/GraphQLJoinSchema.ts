@@ -224,13 +224,13 @@ async function fieldResolver(
     return context.proxyToRemote(query.makeProxyCall(queryArgs), info);
   }
 
-  const isRoot = (info.path.prev === undefined);
+  const isRoot = (info.path!.prev === undefined);
   if (isRoot) {
     return proxyRootField(context, args, info);
   }
 
   // proxy value or Error instance injected by the proxy
-  const key = info.path.key as string;
+  const key = info.path!.key as string;
   return rootValue[prefixAlias(key)] || rootValue[key];
 }
 
