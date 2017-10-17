@@ -224,13 +224,15 @@ async function fieldResolver(
     return context.proxyToRemote(query.makeProxyCall(queryArgs), info);
   }
 
-  const isRoot = (info.path.prev === undefined);
+  // TODO: remove '!' after PR is merged
+  const isRoot = (info.path!.prev === undefined);
   if (isRoot) {
     return proxyRootField(context, args, info);
   }
 
   // proxy value or Error instance injected by the proxy
-  const key = info.path.key as string;
+  // TODO: remove '!' after PR is merged
+  const key = info.path!.key as string;
   return rootValue[prefixAlias(key)] || rootValue[key];
 }
 
