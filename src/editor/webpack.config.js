@@ -17,15 +17,15 @@ module.exports = {
     watchContentBase: true,
     port: 9090,
     stats: 'errors-only',
-    proxy: {
-      '/user-idl': 'http://localhost:9002',
-      '/graphql': 'http://localhost:9002',
-    },
+    // proxy: {
+    //   '/user-idl': 'http://localhost:9002',
+    //   '/graphql': 'http://localhost:9002',
+    // },
   },
   resolve: {
-    extensions: ['.jsx', '.js', '.tsx', 'ts', '.json'],
+    extensions: ['.jsx', '.js', '.tsx', '.ts', '.json'],
   },
-  entry: ['./index.tsx'],
+  entry: [root('./index.tsx')],
   output: {
     path: root('.'),
     filename: 'main.js',
@@ -66,5 +66,10 @@ module.exports = {
       filename: 'main.css',
       allChunks: true,
     }),
+    // see https://github.com/graphql/graphql-language-service/issues/128
+    new webpack.ContextReplacementPlugin(
+      /graphql-language-service-interface[\\/]dist$/,
+      new RegExp('^\\./.*\\.js$')
+    )
   ],
 };

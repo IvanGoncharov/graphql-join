@@ -1,3 +1,4 @@
+import { default as ConfigTab, JoinServer } from './ConfigTab/ConfigTab';
 import './css/app.css';
 import './css/codemirror.css';
 import './GraphQLEditor/editor.css';
@@ -7,12 +8,12 @@ import * as classNames from 'classnames';
 import * as GraphiQL from 'graphiql';
 import { buildSchema, extendSchema, GraphQLSchema, parse } from 'graphql';
 import * as fetch from 'isomorphic-fetch';
-import * as fakeIDL from 'raw-loader!../fake_definition.graphql';
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 
+import { directiveIDL } from '../directives';
 import GraphQLEditor from './GraphQLEditor/GraphQLEditor';
-import { ConsoleIcon, EditIcon, GithubIcon } from './icons';
+import { ConsoleIcon, EditIcon, GithubIcon, LinkIcon, VoyagerIcon } from './icons';
 
 type FakeEditorState = {
   value: string | null;
@@ -24,10 +25,12 @@ type FakeEditorState = {
   schema: GraphQLSchema | null;
   dirtySchema: GraphQLSchema | null;
   proxiedSchemaIDL: string | null;
+
+  serversReady: boolean;
+  servers: JoinServer[];
 };
 
 class FakeEditor extends React.Component<any, FakeEditorState> {
-
   constructor(props) {
     super(props);
 
@@ -41,23 +44,27 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
       status: null,
       schema: null,
       proxiedSchemaIDL: null,
+
+      serversReady: false,
+      servers: [],
     };
   }
 
   componentDidMount() {
-    this.fetcher('/user-idl')
-      .then(response => response.json())
-      .then(IDLs => {
-        this.updateValue(IDLs);
-      });
+    this.updateValue({ schemaIDL: 'type Query { field: String }', extensionIDL: '' });
+    // this.fetcher('/user-idl')
+    //   .then(response => response.json())
+    //   .then(IDLs => {
+    //     this.updateValue(IDLs);
+    //   });
 
-    window.onbeforeunload = () => {
-      if (this.state.dirty) return 'You have unsaved changes. Exit?';
-    };
+    // window.onbeforeunload = () => {
+    //   if (this.state.dirty) return 'You have unsaved changes. Exit?';
+    // };
   }
 
   fetcher(url, options = {}) {
-    const baseUrl = '..'
+    const baseUrl = '..';
     return fetch(baseUrl + url, {
       credentials: 'include',
       ...options,
@@ -84,20 +91,22 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
     this.updateIdl(value, true);
   }
 
-  postIDL(idl) {
-    return this.fetcher('/user-idl', {
-      method: 'post',
-      headers: { 'Content-Type': 'text/plain' },
-      body: idl,
-    });
+  postIDL(idl): Promise<{ ok: boolean; text: () => Promise<string> }> {
+    // let c = fetch('https://test')
+    // return this.fetcher('/user-idl', {
+    //   method: 'post',
+    //   headers: { 'Content-Type': 'text/plain' },
+    //   body: idl,
+    // });
+    return Promise.resolve({ ok: true, text: async () => '' });
   }
 
   buildSchema(value) {
     if (this.state.proxiedSchemaIDL) {
-      let schema = buildSchema(this.state.proxiedSchemaIDL + '\n' + fakeIDL);
+      let schema = buildSchema(this.state.proxiedSchemaIDL + '\n' + directiveIDL);
       return extendSchema(schema, parse(value));
     } else {
-      return buildSchema(value + '\n' + fakeIDL);
+      return buildSchema(value + '\n' + directiveIDL);
     }
   }
 
@@ -156,12 +165,12 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
     this.setState(prevState => ({ ...prevState, activeTab: tab }));
   }
 
-  onEdit = (val) => {
+  onEdit = val => {
     if (this.state.error) this.updateIdl(val);
     let dirtySchema = null as GraphQLSchema | null;
     try {
       dirtySchema = this.buildSchema(val);
-    } catch(_) { }
+    } catch (_) {}
 
     this.setState(prevState => ({
       ...prevState,
@@ -171,8 +180,16 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
     }));
   };
 
+  updateConfig = (ready: boolean, servers: JoinServer[]) => {
+    this.setState({
+      ...this.state,
+      serversReady: ready,
+      servers: servers,
+    });
+  };
+
   render() {
-    let { value, activeTab, schema , dirty, dirtySchema } = this.state;
+    let { value, activeTab, schema, dirty, dirtySchema, serversReady } = this.state;
     return (
       <div className="faker-editor-container">
         <nav>
@@ -183,25 +200,49 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
             </a>
           </div>
           <ul>
+            {/* Servers config Tab icon*/}
             <li
               onClick={() => this.switchTab(0)}
               className={classNames({
                 '-active': activeTab === 0,
+              })}
+            >
+              {' '}
+              <LinkIcon />{' '}
+            </li>
+            {/* IDL editor Tab icon*/}
+            <li
+              onClick={() => this.switchTab(1)}
+              className={classNames({
+                '-disabled': !serversReady,
+                '-active': activeTab === 1,
                 '-dirty': dirty,
               })}
             >
               {' '}
               <EditIcon />{' '}
             </li>
+            {/* GraphiQL editor Tab icon*/}
             <li
-              onClick={() => this.state.schema && this.switchTab(1)}
+              onClick={() => this.state.schema && this.switchTab(2)}
               className={classNames({
-                '-disabled': !this.state.schema,
-                '-active': activeTab === 1,
+                '-disabled': !this.state.schema || !serversReady,
+                '-active': activeTab === 2,
               })}
             >
               {' '}
               <ConsoleIcon />{' '}
+            </li>
+            {/* Voyager editor Tab icon*/}
+            <li
+              onClick={() => this.state.schema && this.switchTab(3)}
+              className={classNames({
+                '-disabled': !this.state.schema || !serversReady,
+                '-active': activeTab === 3,
+              })}
+            >
+              {' '}
+              <VoyagerIcon />{' '}
             </li>
             <li className="-pulldown -link">
               <a href="https://github.com/APIs-guru/graphql-faker" target="_blank">
@@ -213,8 +254,15 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
         </nav>
         <div className="tabs-container">
           <div
-            className={classNames('tab-content', 'editor-container', {
+            className={classNames('tab-content', 'config-container', {
               '-active': activeTab === 0,
+            })}
+          >
+            <ConfigTab fetcher={this.fetcher} onChange={this.updateConfig} />
+          </div>
+          <div
+            className={classNames('tab-content', 'editor-container', {
+              '-active': activeTab === 1,
             })}
           >
             <GraphQLEditor
@@ -225,10 +273,11 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
             />
             <div className="action-panel">
               <a
-                className={classNames("material-button", {
+                className={classNames('material-button', {
                   '-disabled': !dirty,
                 })}
-                onClick={this.saveUserIDL}>
+                onClick={this.saveUserIDL}
+              >
                 <span> Save </span>
               </a>
               <div className="status-bar">
@@ -239,12 +288,19 @@ class FakeEditor extends React.Component<any, FakeEditorState> {
           </div>
           <div
             className={classNames('tab-content', {
-              '-active': activeTab === 1,
+              '-active': activeTab === 2,
             })}
           >
             {this.state.schema && (
               <GraphiQL fetcher={e => this.graphQLFetcher(e)} schema={this.state.schema} />
             )}
+          </div>
+          <div
+            className={classNames('tab-content', 'voyager-container', {
+              '-active': activeTab === 3,
+            })}
+          >
+            bye
           </div>
         </div>
       </div>

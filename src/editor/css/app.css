@@ -17,9 +17,10 @@ body {
   overflow: hidden;
 }
 
-.tab-content {
+.tab-content, .tab-content:not(.-active) {
   overflow: hidden;
   height: 0;
+  padding: 0;
 }
 
 .tab-content.-active {
@@ -110,6 +111,10 @@ nav > .logo {
 .editor-container > .graphql-editor {
   flex: 1;
   overflow: hidden;
+}
+
+.config-container {
+  padding: 20px;
 }
 
 .action-panel {
