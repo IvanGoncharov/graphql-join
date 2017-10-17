@@ -59,6 +59,7 @@ import {
   prefixTopLevelFields,
   makeInlineVariablesVisitor,
 } from './utils';
+import { validateJoinIDL } from './validation/validate';
 
 export type RemoteSchema = {
   schema: GraphQLSchema,
@@ -91,7 +92,14 @@ export class GraphQLJoinSchema {
     }
     // FIXME: validate remoteSchemas
 
-    const joinDefs = splitAST(parse(joinIDL));
+    const joinAST = parse(joinIDL);
+    const validationErrors = validateJoinIDL(joinAST);
+    if (validationErrors.length !== 0) {
+      throw new Error(
+        'Validation errors:' + validationErrors.map(e => '\n\t' + e.message)
+      );
+    }
+    const joinDefs = splitAST(joinAST);
     const remoteTypes = getRemoteTypes(remoteSchemas, joinDefs);
     this.schema = buildSchemaFromIDL({
       ...joinDefs,

@@ -4,20 +4,14 @@ import {
   buildSchema,
 
   validate,
-  ArgumentsOfCorrectTypeRule,
-  KnownArgumentNamesRule,
-  KnownDirectivesRule,
-  ProvidedNonNullArgumentsRule,
-  UniqueArgumentNamesRule,
-  UniqueDirectivesPerLocationRule,
-  UniqueInputFieldNamesRule,
 
   DirectiveNode,
   GraphQLDirective,
   getDirectiveValues,
 } from 'graphql';
 
-const directiveIDL = `
+// TODO: add description for arguments and directives
+export const directiveIDL = `
   directive @export(as: String!) on FIELD
   directive @send(to: String!) on QUERY
 
@@ -35,8 +29,7 @@ const directiveIDL = `
     dummy: String
   }
 `;
-
-const directiveSchema = buildSchema(directiveIDL);
+export const directiveSchema = buildSchema(directiveIDL);
 const directives = keyBy(directiveSchema.getDirectives(), 'name');
 
 function buildGetter<T>(
@@ -57,20 +50,3 @@ export const resolveWithDirective = directives['resolveWith'];
 export const getResolveWithDirective = buildGetter<
   { query: string, extraArgs?: { fromFragment?: string } }
 >(resolveWithDirective);
-
-export function validateDirectives(ast: DocumentNode): void {
-  // FIXME: check that there no query arguments inside directive values
-  const errors = validate(directiveSchema, ast, [
-    ArgumentsOfCorrectTypeRule,
-    KnownArgumentNamesRule,
-    KnownDirectivesRule,
-    ProvidedNonNullArgumentsRule,
-    UniqueArgumentNamesRule,
-    UniqueDirectivesPerLocationRule,
-    UniqueInputFieldNamesRule,
-  ]);
-
-  if (errors.length !== 0) {
-    throw new Error('Validation errors:\n\t' + errors.map(e => e.message).join('\n\t'));
-  }
-}

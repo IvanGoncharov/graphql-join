@@ -1,0 +1,13 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`validate directives missing required argument 1`] = `
+Array [
+  [GraphQLError: Directive "@resolveWith" argument "query" of type "String!" is required but not provided.],
+]
+`;
+
+exports[`validate directives unknown directives 1`] = `
+Array [
+  [GraphQLError: Unknown directive "unknown".],
+]
+`;
