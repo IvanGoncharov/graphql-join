@@ -2,13 +2,17 @@
   "name": "graphql-join",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
   "bin": "dist/cli.js",
   "scripts": {
     "test": "tsc --noEmit && jest --runInBand",
     "start": "nodemon -e ts --exec 'ts-node src/cli.ts'",
     "debug": "node --inspect --inspect-brk $(npm bin)/jest",
-    "lint": "tslint --type-check --project tsconfig.json src/*.ts"
+    "lint": "tslint --type-check --project tsconfig.json src/*.ts",
+    "tsc": "tsc",
+    "build:editor": "cd src/editor && npm install && npm run build && cd -",
+    "copy:editor": "mkdir -p dist/editor && cp src/editor/*.{html,js,css,svg} dist/editor",
+    "build:all": "npm run tsc && npm run build:editor && npm run copy:editor"
   },
   "repository": {
     "type": "git",
