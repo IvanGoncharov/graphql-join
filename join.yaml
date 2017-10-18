@@ -1,6 +1,8 @@
 APIs:
-  graphcool:
-    url: 'http://localhost:9010/graphql'
+  universe:
+    url: 'https://www.universe.com/graphql/beta'
+    headers:
+      'Authorization': 'Bearer ${env:UNIVERSE_TOKEN}'
   yelp:
     prefix: 'Yelp_'
     url: 'https://api.yelp.com/v3/graphql'
@@ -8,10 +10,10 @@ APIs:
       'Authorization': 'Bearer ${env:YELP_TOKEN}'
 IDL: |
   schema {
-    query: Query # non-prefixed `Query` from Real estate API
+    query: Query # non-prefixed `Query` from universe API
   }
 
-  extend type Appartament {
+  extend type Event {
     placesNearby(term: String, radius: Float): Yelp_Businesses @resolveWith(
       query: "placesNearby",
       extraArgs: { fromFragment: "LocationForYelp" }
@@ -24,6 +26,6 @@ IDL: |
     }
   }
 
-  fragment LocationForYelp on Appartament {
+  fragment LocationForYelp on Event {
     address @export(as: "location")
   }
