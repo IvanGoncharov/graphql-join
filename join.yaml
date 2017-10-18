@@ -1,0 +1,29 @@
+APIs:
+  graphcool:
+    url: 'http://localhost:9010/graphql'
+  yelp:
+    prefix: 'Yelp_'
+    url: 'https://api.yelp.com/v3/graphql'
+    headers:
+      'Authorization': 'Bearer ${env:YELP_TOKEN}'
+IDL: |
+  schema {
+    query: Query # non-prefixed `Query` from Real estate API
+  }
+
+  extend type Appartament {
+    placesNearby(term: String, radius: Float): Yelp_Businesses @resolveWith(
+      query: "placesNearby",
+      extraArgs: { fromFragment: "LocationForYelp" }
+    )
+  }
+
+  query placesNearby($location: String!, $term: String, $radius: Float) @send(to: "yelp") {
+    search(location: $location, radius: $radius, term: $term) {
+      ...CLIENT_SELECTION
+    }
+  }
+
+  fragment LocationForYelp on Appartament {
+    address @export(as: "location")
+  }

@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 
+import * as yaml from 'js-yaml';
 import * as express from 'express';
 import * as graphqlHTTP from 'express-graphql';
 import { Source, printSchema } from 'graphql';
@@ -11,28 +12,15 @@ import {
 
 import { GraphQLJoinSchema } from './GraphQLJoinSchema';
 import { ProxyContext } from './ProxyContext';
-
-const endpoints: EndpointMap = {
-  graphcool: {
-    url: 'http://localhost:9010/graphql'
-  },
-  yelp: {
-    prefix: 'Yelp_',
-    url: 'https://api.yelp.com/v3/graphql',
-    headers: {
-      'Authorization': 'Bearer ' + process.env.YELP_TOKEN
-    }
-    // TODO: headers white listing from request
-  }
-};
-
-function readGraphQLFile(path: string): Source {
-  const data = readFileSync(path, 'utf-8');
-  return new Source(data, path);
-}
+import resolveEnvRefs from './resolveEnvRefs';
 
 async function main() {
-  const joinIDL = readGraphQLFile('./join.graphql');
+  const config = resolveEnvRefs(
+    yaml.safeLoad(readFileSync('./join.yaml', 'utf-8'))
+  );
+  const endpoints = config.APIs as EndpointMap;
+  const joinIDL = config.IDL as string;
+
   const {remoteSchemas, proxyFns} = await getRemoteSchemas(endpoints);
   const joinSchema = new GraphQLJoinSchema(joinIDL, remoteSchemas);
   console.log(printSchema(joinSchema.schema));
