@@ -250,7 +250,6 @@ async function fieldResolver(
     if (transformArgs) {
       queryArgs = transformArgs(queryArgs);
     }
-    console.log(queryArgs);
     return context.proxyToRemote(query.makeProxyCall(queryArgs), info);
   }
 
@@ -404,7 +403,7 @@ function schemaToASTTypes(
   schema: GraphQLSchema
 ): TypeDefinitionNode[] {
   const idl = printSchema(schema);
-  const ast = parse(idl, { noLocation: true });
+  const ast = parse(idl);
   const types = splitAST(ast).types;
   return types.filter(type => !isBuiltinType(type.name.value));
 }

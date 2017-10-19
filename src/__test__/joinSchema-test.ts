@@ -2,6 +2,45 @@ import { testJoin } from './testUtils';
 
 describe('joinSchema', () => {
 
+  test('Preserve type description', async () => {
+    const execute = testJoin(
+      {
+        test1: `
+          # Foo description
+          type Foo { value: String }
+          type Query { foo: Foo }
+        `,
+        test2: `
+          # Bar description
+          type Bar { value: String }
+          type Query { bar: Bar }
+        `,
+      }, `
+        type Query {
+          proxyFoo: Foo @resolveWith(query: "foo1")
+          proxyBar: Bar @resolveWith(query: "foo2")
+        }
+        query foo1 @send(to: "test1") {
+          foo {
+            ...CLIENT_SELECTION
+          }
+        }
+        query foo2 @send(to: "test2") {
+          bar {
+            ...CLIENT_SELECTION
+          }
+        }
+      `
+    );
+
+    await execute(`
+      {
+        fooDescription: __type(name: "Foo") { description }
+        barDescription: __type(name: "Bar") { description }
+      }
+    `);
+  });
+
   test('Proxy only types referenced inside join schema', async () => {
     const execute = testJoin(
       {

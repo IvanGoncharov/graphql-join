@@ -148,6 +148,40 @@ exports[`joinSchema Prefix remote types 3`] = `
 ]
 `;
 
+exports[`joinSchema Preserve type description 1`] = `
+# Bar description
+type Bar {
+  value: String
+}
+
+# Foo description
+type Foo {
+  value: String
+}
+
+type Query {
+  proxyFoo: Foo
+  proxyBar: Bar
+}
+`;
+
+exports[`joinSchema Preserve type description 2`] = `
+[
+  "\\n      {\\n        fooDescription: __type(name: \\"Foo\\") { description }\\n        barDescription: __type(name: \\"Bar\\") { description }\\n      }\\n    ",
+  {
+    "data": {
+      "fooDescription": {
+        "description": "Foo description"
+      },
+      "barDescription": {
+        "description": "Bar description"
+      }
+    },
+    "errors": []
+  }
+]
+`;
+
 exports[`joinSchema Proxy only types referenced inside join schema 1`] = `
 type Query {
   typeToProxy: TypeToProxy
