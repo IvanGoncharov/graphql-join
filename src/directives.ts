@@ -18,6 +18,7 @@ export const directiveIDL = `
   directive @resolveWith(
     query: String!,
     extraArgs: ExtraArgs,
+    transformArgs: String
   ) on FIELD_DEFINITION
 
   input ExtraArgs {
@@ -47,6 +48,8 @@ export const sendDirective = directives['send'];
 export const getSendDirective = buildGetter<{ to: string }>(sendDirective);
 
 export const resolveWithDirective = directives['resolveWith'];
-export const getResolveWithDirective = buildGetter<
-  { query: string, extraArgs?: { fromFragment?: string } }
->(resolveWithDirective);
+export const getResolveWithDirective = buildGetter<{
+  query: string,
+  extraArgs?: { fromFragment?: string },
+  transformArgs?: string
+}>(resolveWithDirective);

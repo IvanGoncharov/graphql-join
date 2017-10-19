@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { join as joinPaths, dirname } from 'path';
 
 import * as yaml from 'js-yaml';
 import * as express from 'express';
@@ -15,14 +16,25 @@ import { ProxyContext } from './ProxyContext';
 import resolveEnvRefs from './resolveEnvRefs';
 
 async function main() {
+  const configPath = './join.yaml';
+  const basePath = dirname(configPath);
   const config = resolveEnvRefs(
-    yaml.safeLoad(readFileSync('./join.yaml', 'utf-8'))
+    yaml.safeLoad(readFileSync(configPath, 'utf-8'))
   );
-  const endpoints = config.APIs as EndpointMap;
-  const joinIDL = config.IDL as string;
+  const endpoints = config.apis as EndpointMap;
+  const joinIDL = config.joinIDL as string;
+  const modulePath = config.transformModule
+  let transformModule;
+  if (modulePath) {
+    transformModule = require(joinPaths(basePath, modulePath));
+  }
 
   const {remoteSchemas, proxyFns} = await getRemoteSchemas(endpoints);
-  const joinSchema = new GraphQLJoinSchema(joinIDL, remoteSchemas);
+  const joinSchema = new GraphQLJoinSchema(
+    joinIDL,
+    remoteSchemas,
+    transformModule
+  );
   console.log(printSchema(joinSchema.schema));
 
   const app = express();

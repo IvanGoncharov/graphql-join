@@ -71,6 +71,7 @@ export type RemoteSchemasMap = { [schemaName: string]: RemoteSchema };
 export type ResolveWithArgs = {
   query: ProxyOperation;
   argumentsFragment?: ArgumentsFragment;
+  transformArgs?: (object) => object;
 };
 
 export class GraphQLJoinSchema {
@@ -85,7 +86,8 @@ export class GraphQLJoinSchema {
 
   constructor(
     joinIDL: string | Source,
-    remoteSchemas: RemoteSchemasMap
+    remoteSchemas: RemoteSchemasMap,
+    transformFuncMap: { [name: string]: (object) => object } = {}
   ) {
     if (typeof joinIDL !== 'string' && !(joinIDL instanceof Source)) {
       throw new TypeError('Must provide joinIDL. Received: ' + String(joinIDL));
@@ -143,19 +145,33 @@ export class GraphQLJoinSchema {
         for (const field of Object.values(type.getFields())) {
           const resolveWithArgs = getResolveWithDirective(field.astNode);
           if (resolveWithArgs) {
-            const { query, extraArgs } = resolveWithArgs;
-            const argsFragment = extraArgs && extraArgs.fromFragment;
             this.resolveWithMap[type.name] = {
               ...this.resolveWithMap[type.name],
-              [field.name]: {
-                query: operations[query],
-                argumentsFragment:
-                  argsFragment !== undefined ? fragments[argsFragment] : undefined,
-              }
+              [field.name]: makeResolveWith(resolveWithArgs)
             };
           }
         }
       }
+    }
+
+    function makeResolveWith(resolveWithArgs) {
+      const { query, extraArgs, transformArgs } = resolveWithArgs;
+      const resolveWith: ResolveWithArgs = {query: operations[query]};
+
+      const argsFragment = extraArgs && extraArgs.fromFragment;
+      if (argsFragment) {
+        resolveWith.argumentsFragment = fragments[argsFragment];
+      }
+
+      if (transformArgs) {
+        if (!transformFuncMap[transformArgs]) {
+          throw new Error(
+            `Can't find "${transformArgs}" transformation function.`
+          );
+        }
+        resolveWith.transformArgs = transformFuncMap[transformArgs];
+      }
+      return resolveWith;
     }
 
   }
@@ -226,11 +242,15 @@ async function fieldResolver(
     context.getResolveWithArgs(info.parentType.name, info.fieldName);
 
   if (resolveWith) {
-    const { query, argumentsFragment } = resolveWith as ResolveWithArgs;
-    const queryArgs = {
+    const { query, argumentsFragment, transformArgs } = resolveWith;
+    let queryArgs = {
       ...args,
       ...(argumentsFragment ? argumentsFragment.extractArgs(rootValue) : {}),
     };
+    if (transformArgs) {
+      queryArgs = transformArgs(queryArgs);
+    }
+    console.log(queryArgs);
     return context.proxyToRemote(query.makeProxyCall(queryArgs), info);
   }
 

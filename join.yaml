@@ -1,4 +1,4 @@
-APIs:
+apis:
   universe:
     url: 'https://www.universe.com/graphql/beta'
     headers:
@@ -8,7 +8,8 @@ APIs:
     url: 'https://api.yelp.com/v3/graphql'
     headers:
       'Authorization': 'Bearer ${env:YELP_TOKEN}'
-IDL: |
+transformModule: '../join.js'
+joinIDL: |
   schema {
     query: Query # non-prefixed `Query` from universe API
   }
@@ -17,6 +18,7 @@ IDL: |
     placesNearby(term: String, radius: Float): Yelp_Businesses @resolveWith(
       query: "placesNearby",
       extraArgs: { fromFragment: "LocationForYelp" }
+      transformArgs: "addressAndCityToLocation"
     )
   }
 
@@ -27,5 +29,6 @@ IDL: |
   }
 
   fragment LocationForYelp on Event {
-    address @export(as: "location")
+    address @export(as: "address")
+    cityName @export(as: "cityName")
   }
