@@ -8,7 +8,7 @@ apis:
     url: 'https://api.yelp.com/v3/graphql'
     headers:
       'Authorization': 'Bearer ${env:YELP_TOKEN}'
-transformModule: '../join.js'
+transformModule: './join.js'
 joinIDL: |
   schema {
     query: Query # non-prefixed `Query` from universe API
@@ -16,13 +16,13 @@ joinIDL: |
 
   extend type Event {
     placesNearby(term: String, radius: Float): Yelp_Businesses @resolveWith(
-      query: "placesNearby",
+      query: "getPlacesNearby",
       extraArgs: { fromFragment: "LocationForYelp" }
       transformArgs: "addressAndCityToLocation"
     )
   }
 
-  query placesNearby($location: String!, $term: String, $radius: Float) @send(to: "yelp") {
+  query getPlacesNearby($location: String!, $term: String, $radius: Float) @send(to: "yelp") {
     search(location: $location, radius: $radius, term: $term) {
       ...CLIENT_SELECTION
     }
