@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { readFileSync } from 'fs';
 import { resolve as resolvePaths, dirname } from 'path';
 
